@@ -53,7 +53,7 @@ struct SettingsView: View {
                     sidebarItem(for: identifier)
                 }
             } header: {
-                Text("MacMenuY")
+                Text("Tuckbar")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
                     .padding(.vertical, 5)

@@ -4,6 +4,7 @@ import Combine
 @MainActor
 final class ShelfManager: ObservableObject {
     @Published var message: String?
+    @Published var isEditing = false
     @Published private(set) var isBusy = false
     private(set) var lastNativeAction = ""
     @Published private(set) var isEnabled = true
@@ -123,14 +124,39 @@ final class ShelfManager: ObservableObject {
         lastNativeAction="begin: \(item.info.description) button=\(button.rawValue)"
         isBusy = true; message = nil
         defer { isBusy = false; writeDiagnostics() }
-        if closeShelf { appState.menuBarManager.iceBarPanel.close() }
+        let presentationScreen = appState.menuBarManager.iceBarPanel.screen ?? NSScreen.main
+        if closeShelf {
+            appState.menuBarManager.iceBarPanel.close()
+            try? await Task.sleep(for: .milliseconds(25))
+        }
         do {
             try await appState.itemManager.revealAndClick(item, mouseButton: button,
                 modifiers: CGEventFlags(rawValue: UInt64(modifiers.intersection(.deviceIndependentFlagsMask).rawValue)),
                 clickCount: clickCount)
             appState.preferences.used(item); appState.activity.acknowledge(item)
             lastNativeAction="completed: \(item.info.description)"
-        } catch { lastNativeAction="failed: \(item.info.description) \(error.localizedDescription)"; message = "无法打开 \(item.displayName)：\(error.localizedDescription)" }
+        } catch {
+            lastNativeAction="failed: \(item.info.description) \(error.localizedDescription)"
+            message = "无法打开 \(item.displayName)：\(error.localizedDescription)。可再次点击重试。"
+            if closeShelf, !appState.itemManager.isShuttingDown, let screen = presentationScreen {
+                let bounds = CGDisplayBounds(screen.displayID)
+                let band = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width,
+                                  height: screen.getMenuBarHeight() ?? NSStatusBar.system.thickness)
+                // A native menu may open even if its event acknowledgement times
+                // out. Preserve that interface and show feedback when it closes.
+                let originalIsOpen = item.sourcePID.map { source in
+                    WindowInfo.getOnScreenWindows().contains {
+                        MenuBarSourceResolver.sameApplicationFamily(source, $0.ownerPID) &&
+                        NativeInteractionPolicy.retainsTemporaryItem(layer: $0.layer, frame: $0.frame,
+                            popupLayer: Int(CGWindowLevelForKey(.popUpMenuWindow)), menuBand: band,
+                            isNewlyOpened: true)
+                    }
+                } ?? false
+                if !originalIsOpen {
+                    await appState.menuBarManager.iceBarPanel.show(section: .hidden, on: screen, activate: false)
+                }
+            }
+        }
     }
 
     func toggleEnabled() {

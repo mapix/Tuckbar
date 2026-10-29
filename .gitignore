@@ -3,5 +3,8 @@ research/
 build/
 DerivedData/
 artifacts/
+dist/
+landing/download/*.zip
+landing/download/*.dmg
 *.xcuserstate
 xcuserdata/

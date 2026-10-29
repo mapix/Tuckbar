@@ -192,6 +192,8 @@ final class AppState: ObservableObject {
     }
 
     private var hasPerformedSetup = false
+    private var pendingSetupTask:Task<Void,Never>?
+    func cancelPendingSetup() { pendingSetupTask?.cancel();pendingSetupTask=nil }
 
     /// Sets up the app state.
     func performSetup() {
@@ -200,22 +202,31 @@ final class AppState: ObservableObject {
         configureCancellables()
         permissionsManager.stopAllChecks()
         menuBarManager.performSetup()
-        appearanceManager.performSetup()
-        eventManager.performSetup()
         settingsManager.performSetup()
-        itemManager.performSetup()
-        imageCache.performSetup()
-        updatesManager.performSetup()
-        userNotificationManager.performSetup()
-        shelfManager.performSetup()
-        MenuBarSourceResolver.start(appState: self)
-        activity.performSetup()
-        menuCover.performSetup()
-        hover.performSetup()
-        #if MENUY_VERIFY
-        MenuYDebugHarness.shared.setup(appState:self)
-        MenuYVerificationCommands.setup(appState:self)
-        #endif
+        MenuBarSourceResolver.start(appState:self)
+        // Recovery runs with dividers expanded and before normal reconciliation,
+        // icon interactions or hover can issue new native operations.
+        pendingSetupTask=Task { @MainActor [weak self] in
+            guard let self else { return }
+            await itemManager.recoverRestorationJournal(timeout:2)
+            guard !Task.isCancelled,!itemManager.isShuttingDown else { return }
+            for section in menuBarManager.sections { section.controlItem.state = .hideItems }
+            appearanceManager.performSetup()
+            eventManager.performSetup()
+            itemManager.performSetup()
+            imageCache.performSetup()
+            updatesManager.performSetup()
+            userNotificationManager.performSetup()
+            shelfManager.performSetup()
+            activity.performSetup()
+            menuCover.performSetup()
+            hover.performSetup()
+            #if MENUY_VERIFY
+            MenuYDebugHarness.shared.setup(appState:self)
+            MenuYVerificationCommands.setup(appState:self)
+            #endif
+            pendingSetupTask=nil
+        }
     }
 
     /// Assigns the app delegate to the app state.

@@ -20,18 +20,29 @@ enum NativeInteractionPolicy {
     static func isClickCenterSafe(frame: CGRect, isOnScreen: Bool, display: CGRect, minimumX: CGFloat) -> Bool {
         let center=CGPoint(x:frame.midX,y:frame.midY)
         return isOnScreen && frame.width>0 && frame.height>0 && display.contains(center) &&
-            center.x>=minimumX+1 && center.y>=display.minY && center.y<=display.minY+64
+            center.x>=minimumX+1 && frame.minY>=display.minY-1 && frame.minY<=display.minY+4 &&
+            center.y>=display.minY && center.y<=display.minY+64
     }
 
     /// A real menu is retained until it closes, even when its utility process
     /// is accessory/inactive. Opening a normal app window must not strand an icon.
-    static func retainsTemporaryItem(layer: Int, frame: CGRect, popupLayer: Int, menuBand: CGRect) -> Bool {
+    static func retainsTemporaryItem(layer: Int, frame: CGRect, popupLayer: Int, menuBand: CGRect,
+                                     isNewlyOpened: Bool = false) -> Bool {
         guard frame.width > 1, frame.height > 1 else { return false }
         if layer == popupLayer { return true }
         let beginsBelowMenu = frame.minY >= menuBand.maxY - 1 && frame.height > 8
         let largeTopPanel = frame.minY >= menuBand.minY - 1 && frame.height > 64
-        return layer > 0 && frame.width <= 1200 && (beginsBelowMenu || largeTopPanel) &&
-            frame.minY <= menuBand.maxY + 80
+        if layer > 0 && frame.width <= 1200 && (beginsBelowMenu || largeTopPanel) &&
+            frame.minY <= menuBand.maxY + 80 {
+            return true
+        }
+        // Custom tray popovers (e.g., DingTalk, Electron/Qt tray menus) may use
+        // layer 0 (normal window level) anchored near the menu bar while newly opened.
+        if isNewlyOpened && layer >= 0 && frame.width <= 520 && frame.height <= 900 &&
+            frame.minY >= menuBand.minY - 1 && frame.minY <= menuBand.maxY + 48 {
+            return true
+        }
+        return false
     }
 
     static func displayIndex(frame: CGRect, displays: [CGRect], preferredIndex: Int? = nil) -> Int? {

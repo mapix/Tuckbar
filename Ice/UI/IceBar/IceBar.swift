@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class IceBarPanel: NSWindow {
+final class IceBarPanel: NSPanel {
     private weak var appState: AppState?
     private(set) var currentSection: MenuBarSection.Name?
     private var subscriptions = Set<AnyCancellable>()
@@ -14,16 +14,18 @@ final class IceBarPanel: NSWindow {
     private var generation = 0
     private(set) var lastDismissReason = ""
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 
     init(appState: AppState) {
-        super.init(contentRect: .zero, styleMask: [.borderless, .fullSizeContentView],
+        super.init(contentRect: .zero, styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
                    backing: .buffered, defer: false)
         self.appState = appState
-        title = "MacMenuY"
+        title = "Tuckbar"
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = false
         allowsToolTipsWhenApplicationIsInactive = true
+        isFloatingPanel = true
+        becomesKeyOnlyIfNeeded = true
         animationBehavior = .none
         backgroundColor = NSColor(calibratedWhite:0.08,alpha:1)
         isOpaque = true
@@ -53,7 +55,8 @@ final class IceBarPanel: NSWindow {
             #if MENUY_VERIFY
             if ProcessInfo.processInfo.arguments.contains("--verification-keep-open") || MenuYDebugHarness.holdShelf { return }
             #endif
-            guard let self, isVisible, event.timestamp >= openedTimestamp,
+            guard let self, isVisible, appState?.shelfManager.isEditing != true,
+                  event.timestamp >= openedTimestamp,
                   !frame.contains(NSEvent.mouseLocation) else { return }
             // The status item action handles toggling. Do not close before its click.
             if let appState, let controlFrame = appState.menuBarManager.section(withName: .visible)?.controlItem.windowFrame,
@@ -73,16 +76,21 @@ final class IceBarPanel: NSWindow {
         }
     }
 
-    func show(section: MenuBarSection.Name, on screen: NSScreen, activate: Bool = true) async {
+    func show(section: MenuBarSection.Name, on screen: NSScreen, activate: Bool = false) async {
         guard let appState else { return }
         generation += 1
         let ticket = generation
         lastDismissReason = ""
         currentSection = section
         appState.navigationState.isIceBarPresented = true
-        await appState.itemManager.refreshItems()
+        if appState.itemManager.itemCache.allItems.isEmpty {
+            await appState.itemManager.refreshItems()
+        } else {
+            await appState.itemManager.cacheItemsIfNeeded()
+        }
         guard ticket == generation else { return }
-        if ScreenCapture.cachedCheckPermissions(reset:true) {
+        let hasPermission = ScreenCapture.cachedCheckPermissions() || ScreenCapture.cachedCheckPermissions(reset: true)
+        if hasPermission {
             await appState.imageCache.updateCacheWithoutChecks(sections:MenuBarSection.Name.allCases)
         }
         guard ticket == generation else { return }
@@ -102,14 +110,8 @@ final class IceBarPanel: NSWindow {
         contentView=hosting
         openedTimestamp = ProcessInfo.processInfo.systemUptime
         if activate {
-            NSApp.activate(ignoringOtherApps:true)
             makeKeyAndOrderFront(nil)
         } else { orderFrontRegardless() }
-        appState.shelfManager.writeDiagnostics()
-        if ScreenCapture.cachedCheckPermissions(reset: true) {
-            await appState.imageCache.updateCacheWithoutChecks(sections: MenuBarSection.Name.allCases)
-        }
-        guard ticket == generation else { return }
         appState.shelfManager.writeDiagnostics()
         MenuYEvidence.capture(appState:appState)
     }
@@ -143,8 +145,15 @@ final class IceBarPanel: NSWindow {
         orderOut(nil)
         contentView = nil
         currentSection = nil
-        appState?.navigationState.isIceBarPresented = false
-        if appState?.settingsWindow?.isVisible != true { NSApp.setActivationPolicy(.accessory) }
+        if appState?.shelfManager.isEditing == true {
+            appState?.shelfManager.isEditing = false
+        }
+        if appState?.navigationState.isIceBarPresented == true {
+            appState?.navigationState.isIceBarPresented = false
+        }
+        if appState?.settingsWindow?.isVisible != true, NSApp.activationPolicy() != .accessory {
+            NSApp.setActivationPolicy(.accessory)
+        }
         appState?.shelfManager.writeDiagnostics()
     }
 }

@@ -108,6 +108,7 @@ final class ControlItem {
         self.statusItem.autosaveName = autosaveName
         self.identifier = identifier
         self.appState = appState
+        if appState.itemManager.hasPendingRestorationJournal { self.state = .showItems }
 
         // This could break in a new macOS release, but we need this constraint in order to be
         // able to hide the control item when the `ShowSectionDividers` setting is disabled. A
@@ -350,8 +351,8 @@ final class ControlItem {
             isVisible = true
             // Enable the cell, as it may have been previously disabled.
             button.cell?.isEnabled = true
-            button.toolTip = "MacMenuY — 悬浮展开菜单栏项目，离开收起"
-            button.setAccessibilityLabel("MacMenuY")
+            button.toolTip = "Tuckbar — 悬浮展开菜单栏项目，离开收起"
+            button.setAccessibilityLabel("Tuckbar")
             let icon = appState.settingsManager.generalSettingsManager.iceIcon
             // We can usually just set the image directly from the icon.
             button.image = switch state {
@@ -404,8 +405,8 @@ final class ControlItem {
         button.imagePosition = .imageLeading
         button.font = .monospacedDigitSystemFont(ofSize:10,weight:.semibold)
         let notice=unread>0 ? "应用提示未读 \(unread)\(stale ? "（上次确认）" : "")" : "\(changedApps) 个应用图标有变化"
-        button.toolTip="MacMenuY · \(notice)\n悬浮展开，离开收起；右键设置或退出"
-        button.setAccessibilityLabel("MacMenuY 收纳入口")
+        button.toolTip="Tuckbar · \(notice)\n悬浮展开，离开收起；右键设置或退出"
+        button.setAccessibilityLabel("Tuckbar 收纳入口")
         button.setAccessibilityValue(notice)
     }
 
@@ -414,7 +415,7 @@ final class ControlItem {
         guard let appState, let screen = NSScreen.screenWithMouse ?? NSScreen.main else { return }
         appState.navigationState.isIceBarPresented = true
         appState.settingsWindow?.close()
-        Task { await appState.menuBarManager.iceBarPanel.show(section: .hidden, on: screen) }
+        Task { await appState.menuBarManager.iceBarPanel.show(section: .hidden, on: screen, activate: false) }
     }
 
     func toggleDrawerFromEntry() { toggleDrawer() }
@@ -454,7 +455,7 @@ final class ControlItem {
 
     /// Creates a menu to show under the control item.
     private func createMenu(with appState: AppState) -> NSMenu {
-        let menu = NSMenu(title:"MacMenuY")
+        let menu = NSMenu(title:"Tuckbar")
         let enable = NSMenuItem(title:appState.shelfManager.isEnabled ? "停用收纳" : "启用收纳",
                                action:#selector(toggleCollection),keyEquivalent:"")
         enable.target=self; menu.addItem(enable)
@@ -464,7 +465,7 @@ final class ControlItem {
         let settings = NSMenuItem(title:"设置…",action:#selector(AppDelegate.openSettingsWindow),keyEquivalent:",")
         settings.target=appState.appDelegate; menu.addItem(settings)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title:"退出 MacMenuY",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q"))
+        menu.addItem(NSMenuItem(title:"退出 Tuckbar",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q"))
         return menu
     }
     @objc private func toggleCollection() { appState?.shelfManager.toggleEnabled() }

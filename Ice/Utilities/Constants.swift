@@ -27,8 +27,8 @@ enum Constants {
     static let permissionsWindowID = "PermissionsWindow"
 
     /// The title for the settings window.
-    static let settingsWindowTitle = "MacMenuY"
+    static let settingsWindowTitle = "Tuckbar"
 
     /// The title for the permissions window.
-    static let permissionsWindowTitle = "MacMenuY · 权限"
+    static let permissionsWindowTitle = "Tuckbar · 权限"
 }

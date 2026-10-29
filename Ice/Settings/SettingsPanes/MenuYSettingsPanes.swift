@@ -4,36 +4,68 @@ import SwiftUI
 struct MenuYGeneralPane: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var shelf: ShelfManager
+    @EnvironmentObject var prefs: MenuYPreferences
     var body: some View {
         Form {
             Section {
                 VStack(alignment:.leading,spacing:8) {
-                    Label("菜单栏，留一个入口。",systemImage:"tray.full.fill").font(.title2.weight(.semibold))
-                    Text("鼠标悬浮入口，在系统菜单栏下方展开整屏收纳栏。鼠标离开入口与收纳栏后自动收起。全部项目可检索，原图标、徽标和菜单保留。")
+                    Label("Tuckbar · 菜单栏，留一个入口。",systemImage:"tray.full.fill").font(.title2.weight(.semibold))
+                    Text("鼠标悬浮顶部入口，在系统菜单栏下方丝滑展开二级收纳栏。鼠标离开入口与收纳栏后自动收起；开启「整理」图钉模式时锁定面板不自动隐藏。")
                         .foregroundStyle(.secondary)
                 }.padding(.vertical,8)
                 Toggle("启用收纳",isOn:Binding(get:{shelf.isEnabled},set:{_ in shelf.toggleEnabled()})).disabled(shelf.isBusy)
-                LaunchAtLogin.Toggle("登录时启动 MacMenuY")
+                LaunchAtLogin.Toggle("登录时启动 Tuckbar")
                 HStack {
                     #if MENUY_VERIFY
                     Button("调试预览") { appState.menuBarManager.section(withName:.visible)?.controlItem.openDrawer() }
                     #endif
                     Spacer()
-                    Button("退出 MacMenuY") { NSApp.terminate(nil) }
+                    Button("退出 Tuckbar") { NSApp.terminate(nil) }
                 }
             }
-            Section("操作") {
-                LabeledContent("快速检索",value: "悬浮展开后输入应用名称")
-                LabeledContent("原应用菜单",value: "左键、右键和 Option 等修饰键保留")
-                LabeledContent("固定/收回",value: "收纳栏的图钉整理模式，或项目管理页")
-                LabeledContent("退出/停用",value: "入口右键菜单或收纳栏右侧按钮")
+            Section("悬浮与自动隐藏时机") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("悬浮展开延迟")
+                        Spacer()
+                        Text("\(Int((prefs.hoverEnterDelay * 1000).rounded())) ms")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $prefs.hoverEnterDelay, in: 0.05...0.60, step: 0.05)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("离开自动隐藏延迟")
+                        Spacer()
+                        Text("\(Int((prefs.hoverLeaveDelay * 1000).rounded())) ms")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $prefs.hoverLeaveDelay, in: 0.10...1.20, step: 0.05)
+                }
+                HStack {
+                    Text("开启二级菜单栏内的「整理（图钉）」按钮时，自动隐藏将自动暂停，方便逐个切换图标常驻状态。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("恢复默认时机") {
+                        prefs.hoverEnterDelay = 0.15
+                        prefs.hoverLeaveDelay = 0.25
+                    }.controlSize(.small)
+                }
+            }
+            Section("操作说明") {
+                LabeledContent("快速检索",value: "悬浮展开后直接输入应用名称")
+                LabeledContent("原应用菜单",value: "左键、右键及 Option 等修饰键完整穿透")
+                LabeledContent("固定/收回",value: "点击二级菜单栏「整理」锁定面板后逐个切换，或在项目管理页切换")
+                LabeledContent("退出/停用",value: "入口右键菜单或二级菜单栏右侧快捷按钮")
             }
             Section("系统权限") {
                 HStack {
                     Button("辅助功能设置") { appState.permissionsManager.accessibilityPermission.performRequest() }
                     Button("屏幕录制设置") { appState.permissionsManager.screenRecordingPermission.performRequest() }
                 }
-                Text("图标和菜单栏背景仅在本机处理。无法控制的系统项目保持原样，不覆盖原菜单栏。")
+                Text("图标和菜单栏背景仅在本机实时合成。无法移动的系统固定项目保持原样，不遮挡系统菜单栏。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)

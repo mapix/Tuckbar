@@ -9,22 +9,6 @@ struct PermissionsView: View {
     @EnvironmentObject var permissionsManager: PermissionsManager
     @Environment(\.openWindow) private var openWindow
 
-    private var continueButtonText: LocalizedStringKey {
-        if case .hasRequiredPermissions = permissionsManager.permissionsState {
-            "继续（显示应用图标）"
-        } else {
-            "开始使用"
-        }
-    }
-
-    private var continueButtonForegroundStyle: some ShapeStyle {
-        if case .hasRequiredPermissions = permissionsManager.permissionsState {
-            AnyShapeStyle(.yellow)
-        } else {
-            AnyShapeStyle(.primary)
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             headerView
@@ -58,8 +42,8 @@ struct PermissionsView: View {
     @ViewBuilder
     private var headerView: some View {
         Label {
-            Text("MacMenuY 权限")
-                .font(.system(size: 36))
+            Text("Tuckbar 权限")
+                .font(.system(size: 28, weight: .semibold))
         } icon: {
             if let nsImage = NSImage(named: NSImage.applicationIconName) {
                 Image(nsImage: nsImage)
@@ -74,14 +58,13 @@ struct PermissionsView: View {
     private var explanationView: some View {
         IceSection {
             VStack {
-                Text("MacMenuY 需要辅助功能权限来移动和点击菜单栏图标。")
-                Text("屏幕录制仅用于本机显示图标；无联网、无上传。")
-                    .bold()
-                    .foregroundStyle(.red)
+                Text("Tuckbar 需要辅助功能权限来移动和点击菜单栏图标。")
+                Text("图标和背景仅在本机处理，不上传。")
+                    .foregroundStyle(.secondary)
             }
             .padding()
         }
-        .font(.title3)
+        .font(.body)
         .padding(.bottom, 10)
     }
 
@@ -108,7 +91,7 @@ struct PermissionsView: View {
         Button {
             NSApp.terminate(nil)
         } label: {
-            Text("Quit")
+            Text("退出")
                 .frame(maxWidth: .infinity)
         }
     }
@@ -123,10 +106,10 @@ struct PermissionsView: View {
             appState.permissionsWindow?.close()
 
         } label: {
-            Text(continueButtonText)
+            Text("开始使用")
                 .frame(maxWidth: .infinity)
-                .foregroundStyle(continueButtonForegroundStyle)
         }
+        .keyboardShortcut(.defaultAction)
         .disabled(permissionsManager.permissionsState == .missingPermissions)
     }
 
@@ -135,8 +118,7 @@ struct PermissionsView: View {
         IceSection {
             VStack(spacing: 10) {
                 Text(permission.title)
-                    .font(.title)
-                    .underline()
+                    .font(.title3.weight(.semibold))
 
                 VStack(spacing: 0) {
                     Text("用途：")

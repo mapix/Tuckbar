@@ -25,6 +25,20 @@ import SwiftUI
         }
     }
     @Published var activityEnabled: Bool { didSet { save() } }
+    @Published var hoverEnterDelay: Double {
+        didSet {
+            let valid = MenuYStoredPreferences.validEnterDelay(hoverEnterDelay)
+            if hoverEnterDelay != valid { hoverEnterDelay = valid; return }
+            save()
+        }
+    }
+    @Published var hoverLeaveDelay: Double {
+        didSet {
+            let valid = MenuYStoredPreferences.validLeaveDelay(hoverLeaveDelay)
+            if hoverLeaveDelay != valid { hoverLeaveDelay = valid; return }
+            save()
+        }
+    }
     @Published var ignoredApps: Set<String> { didSet { save() } }
     @Published var lastUsed: [String: Double] {
         didSet {
@@ -40,11 +54,15 @@ import SwiftUI
         self.defaults = defaults
         let value = defaults.data(forKey: Self.storageKey).flatMap { try? JSONDecoder().decode(MenuYStoredPreferences.self, from: $0) } ?? MenuYStoredPreferences()
         opacity = value.opacity; iconSize = value.iconSize; style = value.style; sortMode = value.sortMode
-        rules = value.rules; activityEnabled = value.activityEnabled; ignoredApps = value.ignoredApps; lastUsed = value.lastUsed
+        rules = value.rules; activityEnabled = value.activityEnabled
+        hoverEnterDelay = value.hoverEnterDelay; hoverLeaveDelay = value.hoverLeaveDelay
+        ignoredApps = value.ignoredApps; lastUsed = value.lastUsed
     }
     private func save() {
         let value = MenuYStoredPreferences(opacity: opacity, iconSize: iconSize, style: style, sortMode: sortMode,
-                                          rules: rules, activityEnabled: activityEnabled, ignoredApps: ignoredApps, lastUsed: lastUsed)
+                                          rules: rules, activityEnabled: activityEnabled,
+                                          hoverEnterDelay: hoverEnterDelay, hoverLeaveDelay: hoverLeaveDelay,
+                                          ignoredApps: ignoredApps, lastUsed: lastUsed)
         if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: Self.storageKey) }
     }
     func migrateIdentityKeys(_ migration:[String:String]) {

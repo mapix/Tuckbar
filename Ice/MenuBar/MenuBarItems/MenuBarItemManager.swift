@@ -77,6 +77,7 @@ final class MenuBarItemManager: ObservableObject {
 
     /// Context for a temporarily shown menu bar item.
     private struct TempShownItemContext {
+        var journalID=UUID()
         let windowID: CGWindowID
         let info: MenuBarItemInfo
         let returnDestination: MoveDestination
@@ -94,8 +95,10 @@ final class MenuBarItemManager: ObservableObject {
         var isShowingInterface: Bool {
             shownInterfaceWindows.contains { observed in
                 guard let window = WindowInfo(windowID: observed.windowID), window.isOnScreen else { return false }
+                let newlyOpened = !originalOnScreenWindowIDs.contains(window.windowID)
                 return NativeInteractionPolicy.retainsTemporaryItem(layer: window.layer, frame: window.frame,
-                    popupLayer: Int(CGWindowLevelForKey(.popUpMenuWindow)), menuBand: menuBand)
+                    popupLayer: Int(CGWindowLevelForKey(.popUpMenuWindow)), menuBand: menuBand,
+                    isNewlyOpened: newlyOpened)
             }
         }
     }
@@ -131,6 +134,12 @@ final class MenuBarItemManager: ObservableObject {
     private nonisolated let nativeLifecycle = NativeInteractionLifecycle()
     private var activeNativeWorkCount = 0
     private var terminationTask: Task<NativeRestorationReport,Never>?
+    private let restorationStore=NativeRestorationJournalStore()
+    private var journalBacklog=[NativeRestorationJournalEntry]()
+    private(set) var isRecoveringRestorationJournal=false
+    var hasPendingRestorationJournal:Bool { !journalBacklog.isEmpty || restorationStore.error != nil }
+    var restorationJournalError:String? { restorationStore.error }
+    var restorationJournalCount:Int { journalBacklog.count+tempShownItemContexts.count }
     private struct PendingSyntheticPress { let id: UUID; let release: CGEvent; let ownerPID: pid_t }
     private var pendingSyntheticPress: PendingSyntheticPress?
     private var cursorLeases = [(id: UUID, point: CGPoint?)]()
@@ -143,7 +152,10 @@ final class MenuBarItemManager: ObservableObject {
         let restoredCount: Int
         let remainingWindowIDs: [CGWindowID]
         let elapsed: TimeInterval
-        var completed: Bool { remainingWindowIDs.isEmpty }
+        var journalSaved=true
+        var journalPendingCount=0
+        var journalError:String?
+        var completed: Bool { remainingWindowIDs.isEmpty && journalSaved && journalPendingCount==0 }
     }
 
     /// A Boolean value that indicates whether a mouse button is down.
@@ -223,6 +235,8 @@ final class MenuBarItemManager: ObservableObject {
     /// Creates a manager with the given app state.
     init(appState: AppState) {
         self.appState = appState
+        journalBacklog=restorationStore.load()
+        isRecoveringRestorationJournal=hasPendingRestorationJournal
     }
 
     /// Sets up the manager.
@@ -1303,6 +1317,29 @@ extension MenuBarItemManager {
         }
     }
 
+    /// Waits for an item that was just moved to stop moving, so that it is
+    /// clicked where it ends up rather than mid-drop (e.g., at y=16).
+    private func waitForItemToSettle(_ item: MenuBarItem, timeout: Duration = .milliseconds(200)) async {
+        let interval = Duration.milliseconds(15)
+        let requiredStableReads = 3
+        let deadline = ContinuousClock.now + timeout
+        var previous = Bridging.getWindowFrame(for: item.windowID)
+        var stableReads = 0
+        while ContinuousClock.now < deadline {
+            try? await Task.sleep(for: min(interval, ContinuousClock.now.duration(to: deadline)))
+            let current = Bridging.getWindowFrame(for: item.windowID)
+            if let current, current == previous {
+                stableReads += 1
+                if stableReads >= requiredStableReads {
+                    return
+                }
+            } else {
+                stableReads = 0
+            }
+            previous = current
+        }
+    }
+
     /// Temporary interaction has a visibility contract, not an ordering contract.
     /// Native fixed gaps/reflow must not force extra drags after the click point
     /// has reached the correct display's safe menu area.
@@ -1326,7 +1363,10 @@ extension MenuBarItemManager {
         var lastError: Error=EventError(code:.couldNotComplete,item:item)
         for attempt in 1...3 {
             guard nativeLifecycle.accepts(token) else { throw CancellationError() }
-            if let frame=getCurrentFrame(for:item),visible(frame) { return }
+            if let frame=getCurrentFrame(for:item),visible(frame) {
+                await waitForItemToSettle(item)
+                return
+            }
             traceNativeClick("reveal-move-start",item:item,details:["attempt":attempt,"targetWindowID":target.windowID,
                 "targetFrame":NSStringFromRect(Bridging.getWindowFrame(for:target.windowID) ?? .zero)])
             do {
@@ -1336,14 +1376,17 @@ extension MenuBarItemManager {
                 lastError=error
                 traceNativeClick("reveal-move-error",item:item,details:["error":error.localizedDescription,"attempt":attempt])
             }
-            let settleUntil=ProcessInfo.processInfo.systemUptime+0.3
+            let settleUntil=ProcessInfo.processInfo.systemUptime+0.35
             repeat {
                 guard nativeLifecycle.accepts(token) else { throw CancellationError() }
                 let frame=getCurrentFrame(for:item)
                 let safe=frame.map(visible) ?? false
                 traceNativeClick("reveal-visible-check",item:item,details:["safe":safe,"minimumX":minimumX,
                     "display":NSStringFromRect(display),"attempt":attempt])
-                if safe { return }
+                if safe {
+                    await waitForItemToSettle(item)
+                    if let settled=getCurrentFrame(for:item),visible(settled) { return }
+                }
                 try await Task.sleep(for:.milliseconds(20))
             } while ProcessInfo.processInfo.systemUptime<settleUntil
         }
@@ -1494,12 +1537,15 @@ extension MenuBarItemManager {
                     }
                     // WindowServer may rewrite target routing while annotating
                     // hosted status items. Preserve the original client PID.
+                    let originalTarget = received.getIntegerValueField(.eventTargetUnixProcessID)
+                    traceNativeClick("session-before-target-rewrite", item: item, event: received,
+                        details: ["observedTargetPID": originalTarget, "tap": "listen-only; observation does not prove client delivery"])
                     received.setIntegerValueField(.eventTargetUnixProcessID,value:Int64(pid))
                     self.traceNativeClick("session-delivery",item:item,event:received,details:["repeatRemaining":count])
                     self.postEvent(count>0 ? entry : exit,to:.pid(pid),token:token)
                     return received
                 }
-                ownerTap?.enable(timeout:.milliseconds(250*max(1,repeatCount))) { [weak self] in
+                ownerTap?.enable(timeout:.milliseconds(500*max(1,repeatCount))) { [weak self] in
                     ownerTap?.disable();sessionTap?.disable()
                     self?.traceNativeClick("barrier-timeout",item:item,event:event)
                     completion.finish(.failure(EventError(code:.eventOperationTimeout,item:item)))
@@ -1539,6 +1585,8 @@ extension MenuBarItemManager {
         guard let token = nativeLifecycle.token() else { throw CancellationError() }
         activeNativeWorkCount += 1
         defer { activeNativeWorkCount -= 1 }
+        appState?.eventManager.stopAll()
+        defer { appState?.eventManager.startAll() }
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw EventError(code: .invalidEventSource, item: item)
         }
@@ -1598,23 +1646,33 @@ extension MenuBarItemManager {
             item: item
         )
 
+        try? await waitForMouseToStopMoving(threshold: 0.04, timeout: .milliseconds(200))
+        guard nativeLifecycle.accepts(token) else { throw CancellationError() }
         let cursorLease = beginCursorLease(returnTo:cursorLocation)
         defer { endCursorLease(cursorLease) }
         let press = armSyntheticPress(down:mouseDownEvent,release:fallbackEvent,item:item,
             alternateRelease:mouseUpEvent)
         defer { finishSyntheticPress(press) }
 
-        do {
-            traceNativeClick("click-start",item:item,event:mouseDownEvent)
-            try await postClickEventWithBarrier(mouseDownEvent,item:item,token:token)
-            try await postClickEventWithBarrier(mouseUpEvent,item:item,repeating:2,token:token)
-            traceNativeClick("click-dispatched",item:item,event:mouseUpEvent,
-                details:["verification":"transport-only; native client callback/UI still required"])
-        } catch {
-            if !nativeLifecycle.accepts(token) { releaseSyntheticPress(press);throw CancellationError() }
-            do { try await postClickEventWithBarrier(fallbackEvent,item:item,repeating:2,token:token) }
-            catch { traceNativeClick("click-fallback-failed",item:item,event:fallbackEvent) }
-            throw error
+        let maxAttempts = 2
+        for attempt in 1...maxAttempts {
+            do {
+                traceNativeClick("click-start",item:item,event:mouseDownEvent,details:["attempt":attempt])
+                try await postClickEventWithBarrier(mouseDownEvent,item:item,token:token)
+                try await postClickEventWithBarrier(mouseUpEvent,item:item,repeating:1,token:token)
+                traceNativeClick("click-dispatched",item:item,event:mouseUpEvent,
+                    details:["attempt":attempt,"verification":"transport-only; native client callback/UI still required"])
+                break
+            } catch let error as EventError where error.code == .eventOperationTimeout && attempt < maxAttempts {
+                guard nativeLifecycle.accepts(token) else { releaseSyntheticPress(press);throw CancellationError() }
+                traceNativeClick("click-retry",item:item,event:mouseDownEvent,details:["attempt":attempt])
+                try? await Task.sleep(for: .milliseconds(40))
+            } catch {
+                if !nativeLifecycle.accepts(token) { releaseSyntheticPress(press);throw CancellationError() }
+                do { try await postClickEventWithBarrier(fallbackEvent,item:item,repeating:1,token:token) }
+                catch { traceNativeClick("click-fallback-failed",item:item,event:fallbackEvent) }
+                throw error
+            }
         }
     }
 }
@@ -1673,12 +1731,21 @@ extension MenuBarItemManager {
 
     func revealAndClick(_ item: MenuBarItem, clickWhenFinished: Bool = true, mouseButton: CGMouseButton,
                         modifiers: CGEventFlags = [], clickCount: Int = 1) async throws {
-        guard let token = nativeLifecycle.token(), !isOpeningInterface, let appState, let latest = MenuBarItem(windowID: item.windowID) else {
+        guard !isRecoveringRestorationJournal, let token = nativeLifecycle.token(), !isOpeningInterface, let appState else {
+            throw EventError(code: .invalidItem, item: item)
+        }
+        tempShownItemsTimer?.invalidate()
+        isOpeningInterface = true; activeNativeWorkCount += 1
+        defer { isOpeningInterface = false; activeNativeWorkCount -= 1 }
+        let moveDeadline = ContinuousClock.now + .milliseconds(800)
+        while isMovingItem && ContinuousClock.now < moveDeadline {
+            guard nativeLifecycle.accepts(token) else { throw CancellationError() }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        guard let latest = MenuBarItem(windowID: item.windowID) else {
             throw EventError(code: .invalidItem, item: item)
         }
         traceNativeClick("reveal-start",item:latest,details:["initialOnScreen":latest.isOnScreen])
-        isOpeningInterface = true; activeNativeWorkCount += 1
-        defer { isOpeningInterface = false; activeNativeWorkCount -= 1 }
         let screens = NSScreen.screens
         let preferredScreen = NSScreen.screenWithMouse
         let preferredIndex = preferredScreen.flatMap { selected in screens.firstIndex { $0.displayID == selected.displayID } }
@@ -1689,17 +1756,21 @@ extension MenuBarItemManager {
         let display = CGDisplayBounds(screen.displayID)
         let appMenuMaxX = appState.menuBarManager.getApplicationMenuFrame(for: screen.displayID)?.maxX ?? display.minX
         let minimumX = max(screen.auxiliaryTopRightArea?.minX ?? display.minX, appMenuMaxX)
+        let menuBand = CGRect(x: display.minX, y: display.minY, width: display.width,
+                              height: screen.getMenuBarHeight() ?? NSStatusBar.system.thickness)
+        let initialIDs = Set(WindowInfo.getOnScreenWindows().map(\.windowID))
         if NativeInteractionPolicy.isClickCenterSafe(frame:latest.frame,isOnScreen:latest.isOnScreen,
                                                     display:display,minimumX:minimumX) {
             if clickWhenFinished {
-                guard nativeLifecycle.accepts(token) else { throw CancellationError() }
-                try await appState.menuCover.passthrough {
-                    try await self.click(item: latest, with: mouseButton, modifiers: modifiers, clickCount: clickCount)
-                }
+                try await performClickWithRightFallback(
+                    item: latest, mouseButton: mouseButton, modifiers: modifiers,
+                    clickCount: clickCount, initialWindowIDs: initialIDs,
+                    menuBand: menuBand, token: token
+                )
                 if let index = tempShownItemContexts.firstIndex(where: { $0.windowID == latest.windowID }) {
-                    try? await Task.sleep(for: .milliseconds(150))
+                    try? await Task.sleep(for: .milliseconds(250))
                     refreshShownInterfaces(at: index)
-                    runTempShownItemTimer(for: 1)
+                    runTempShownItemTimer(for: 2)
                 }
             }
             return
@@ -1719,9 +1790,6 @@ extension MenuBarItemManager {
             throw EventError(code: .couldNotComplete, item: item)
         }
         let section = itemCache.section(for: latest) ?? (latest.frame.maxX <= all[dividerIndex].frame.minX ? .hidden : .visible)
-        let menuBand = CGRect(x: display.minX, y: display.minY, width: display.width,
-                              height: screen.getMenuBarHeight() ?? NSStatusBar.system.thickness)
-        let initialIDs = Set(WindowInfo.getOnScreenWindows().map(\.windowID))
         // Record the return before moving. A move acknowledgement or subsequent
         // click may fail after the item has already become visible.
         if !tempShownItemContexts.contains(where: { $0.windowID == latest.windowID }) {
@@ -1731,6 +1799,7 @@ extension MenuBarItemManager {
                 originalFrame:Bridging.getWindowFrame(for:latest.windowID) ?? latest.frame,
                 originalWindowOrder:NativeReturnEvidence.unique(all.map(\.windowID)),originalOnScreen:latest.isOnScreen))
         }
+        persistRestorationJournal()
         do {
             // Synthetic pickup has its own Command flag. Holding Option/Shift for
             // the final original-app click must not delay or alter this move.
@@ -1743,16 +1812,34 @@ extension MenuBarItemManager {
             }
             traceNativeClick("reveal-ready",item:shown,details:["onScreen":shown.isOnScreen,"minimumX":minimumX,"display":NSStringFromRect(display)])
             if clickWhenFinished {
-                guard nativeLifecycle.accepts(token) else { throw CancellationError() }
-                try await appState.menuCover.passthrough {
-                    try await self.click(item: shown, with: mouseButton, modifiers: modifiers, clickCount: clickCount)
-                }
+                try await performClickWithRightFallback(
+                    item: shown, mouseButton: mouseButton, modifiers: modifiers,
+                    clickCount: clickCount, initialWindowIDs: initialIDs,
+                    menuBand: menuBand, token: token
+                )
             }
-            try? await Task.sleep(for: .milliseconds(150))
+            try? await Task.sleep(for: .milliseconds(250))
             if let index = tempShownItemContexts.firstIndex(where: { $0.windowID == latest.windowID }) {
                 refreshShownInterfaces(at: index)
+                if clickWhenFinished, !tempShownItemContexts[index].isShowingInterface {
+                    try? await Task.sleep(for: .milliseconds(60))
+                    if let settled = MenuBarItem(windowID: latest.windowID),
+                       NativeInteractionPolicy.isClickCenterSafe(frame: settled.frame, isOnScreen: settled.isOnScreen,
+                                                                 display: display, minimumX: minimumX) {
+                        traceNativeClick("reveal-retry-click", item: settled)
+                        try await performClickWithRightFallback(
+                            item: settled, mouseButton: mouseButton, modifiers: modifiers,
+                            clickCount: clickCount, initialWindowIDs: initialIDs,
+                            menuBand: menuBand, token: token
+                        )
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if let updatedIndex = tempShownItemContexts.firstIndex(where: { $0.windowID == latest.windowID }) {
+                            refreshShownInterfaces(at: updatedIndex)
+                        }
+                    }
+                }
             }
-            runTempShownItemTimer(for: clickWhenFinished ? 1 : 3)
+            runTempShownItemTimer(for: clickWhenFinished ? 2 : 3)
             await refreshItems()
         } catch {
             traceNativeClick("reveal-failed",item:latest,details:["error":error.localizedDescription])
@@ -1763,20 +1850,72 @@ extension MenuBarItemManager {
         }
     }
 
+    private func performClickWithRightFallback(
+        item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        modifiers: CGEventFlags,
+        clickCount: Int,
+        initialWindowIDs: Set<CGWindowID>,
+        menuBand: CGRect,
+        token: NativeInteractionLifecycle.Token
+    ) async throws {
+        guard let appState else { return }
+        guard nativeLifecycle.accepts(token) else { throw CancellationError() }
+        try await appState.menuCover.passthrough {
+            try await self.click(item: item, with: mouseButton, modifiers: modifiers, clickCount: clickCount)
+        }
+        guard mouseButton == .right,
+              modifiers.isEmpty,
+              item.info.namespace != .init("io.novarock.MacMenuY.Fixture") else {
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(140))
+        guard nativeLifecycle.accepts(token) else { throw CancellationError() }
+        if !hasOpenInterface(for: item, initialWindowIDs: initialWindowIDs, menuBand: menuBand) {
+            traceNativeClick("right-click-fallback-left", item: item)
+            try await appState.menuCover.passthrough {
+                try await self.click(item: item, with: .left, modifiers: modifiers, clickCount: clickCount)
+            }
+        }
+    }
+
+    private func hasOpenInterface(for item: MenuBarItem, initialWindowIDs: Set<CGWindowID>, menuBand: CGRect) -> Bool {
+        let menuBarWindowIDs = Set(Bridging.getWindowList(option: [.menuBarItems]))
+        let popupLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        return WindowInfo.getOnScreenWindows().contains { window in
+            guard window.windowID != item.windowID,
+                  !menuBarWindowIDs.contains(window.windowID),
+                  window.ownerPID != ProcessInfo.processInfo.processIdentifier else { return false }
+            let newlyOpened = !initialWindowIDs.contains(window.windowID)
+            guard NativeInteractionPolicy.retainsTemporaryItem(
+                layer: window.layer, frame: window.frame, popupLayer: popupLayer,
+                menuBand: menuBand, isNewlyOpened: newlyOpened
+            ) else { return false }
+            if let source = item.sourcePID {
+                return MenuBarSourceResolver.sameApplicationFamily(source, window.ownerPID)
+            }
+            return newlyOpened
+        }
+    }
+
     private func refreshShownInterfaces(at index: Int) {
         guard tempShownItemContexts.indices.contains(index) else { return }
         let context = tempShownItemContexts[index]
+        let menuBarWindowIDs = Set(Bridging.getWindowList(option: [.menuBarItems]))
         let windows = WindowInfo.getOnScreenWindows().filter { window in
             guard window.windowID != context.windowID,
-                  window.ownerPID != ProcessInfo.processInfo.processIdentifier,
-                  NativeInteractionPolicy.retainsTemporaryItem(layer: window.layer, frame: window.frame,
-                    popupLayer: Int(CGWindowLevelForKey(.popUpMenuWindow)), menuBand: context.menuBand) else { return false }
+                  !menuBarWindowIDs.contains(window.windowID),
+                  window.ownerPID != ProcessInfo.processInfo.processIdentifier else { return false }
+            let newlyOpened = !context.originalOnScreenWindowIDs.contains(window.windowID)
+            guard NativeInteractionPolicy.retainsTemporaryItem(layer: window.layer, frame: window.frame,
+                    popupLayer: Int(CGWindowLevelForKey(.popUpMenuWindow)), menuBand: context.menuBand,
+                    isNewlyOpened: newlyOpened) else { return false }
             if let source = context.sourcePID {
                 return MenuBarSourceResolver.sameApplicationFamily(source, window.ownerPID)
             }
             // With unknown source metadata, retain only a newly presented popup.
             // Its identity is never used to route an app action.
-            return !context.originalOnScreenWindowIDs.contains(window.windowID)
+            return newlyOpened
         }
         for window in windows where !tempShownItemContexts[index].shownInterfaceWindows.contains(where: { $0.windowID == window.windowID }) {
             tempShownItemContexts[index].shownInterfaceWindows.append(window)
@@ -1836,7 +1975,8 @@ extension MenuBarItemManager {
     /// If an item is currently showing its interface, this method waits for the
     /// interface to close before hiding the items.
     func rehideTempShownItems() async {
-        guard !nativeLifecycle.isStopping else { return }
+        guard !nativeLifecycle.isStopping,!isRecoveringRestorationJournal else { return }
+        defer { persistRestorationJournal() }
         guard !isMovingItem, !isOpeningInterface else { runTempShownItemTimer(for:1); return }
         itemMoveCount += 1
         defer { itemMoveCount -= 1; Task { await self.refreshItems() } }
@@ -1860,6 +2000,8 @@ extension MenuBarItemManager {
             traceNativeRestore("normal-return-start",context:context,items:items)
             guard let item = items.first(where:{ $0.windowID == context.windowID }) else {
                 traceNativeRestore("normal-return-source-removed",context:context,items:items)
+                journalBacklog.removeAll { $0.id == context.journalID }
+                journalBacklog.append(journalEntry(context,items:items))
                 tempShownItemContexts.removeAll { $0.windowID == context.windowID }; continue
             }
             if originalPositionEvidence(context,items:items).confirmsOriginalPosition {
@@ -1898,7 +2040,7 @@ extension MenuBarItemManager {
     /// Register before a permanent pin/unpin move. Only commit after the
     /// physical target and its persisted preference are both verified.
     func registerMovementRollback(for item: MenuBarItem) throws -> NativeMovementCheckpoint {
-        guard !isShuttingDown, let latest=MenuBarItem(windowID:item.windowID) else { throw CancellationError() }
+        guard !isShuttingDown,!isRecoveringRestorationJournal, let latest=MenuBarItem(windowID:item.windowID) else { throw CancellationError() }
         if let index=tempShownItemContexts.firstIndex(where:{ $0.windowID == item.windowID }) {
             if let id=tempShownItemContexts[index].movementCheckpointID { return NativeMovementCheckpoint(id:id,windowID:item.windowID) }
             let id=UUID();tempShownItemContexts[index].movementCheckpointID=id
@@ -1914,6 +2056,7 @@ extension MenuBarItemManager {
             returnDestination:destination,returnSection:section,sourcePID:latest.sourcePID,menuBand:band,movementCheckpointID:id,
             originalFrame:Bridging.getWindowFrame(for:latest.windowID) ?? latest.frame,
             originalWindowOrder:NativeReturnEvidence.unique(items.map(\.windowID)),originalOnScreen:latest.isOnScreen))
+        persistRestorationJournal()
         return NativeMovementCheckpoint(id:id,windowID:latest.windowID)
     }
     func canCommitMovement(_ checkpoint: NativeMovementCheckpoint) -> Bool {
@@ -1923,13 +2066,128 @@ extension MenuBarItemManager {
         guard canCommitMovement(checkpoint) else { return false }
         tempShownItemContexts.removeAll { $0.windowID == checkpoint.windowID && $0.movementCheckpointID == checkpoint.id }
         if tempShownItemContexts.isEmpty { tempShownItemsTimer?.invalidate();tempShownItemsTimer=nil }
+        persistRestorationJournal()
         Task { await self.refreshItems() }
         return true
     }
     func requestMovementRollback(_ checkpoint: NativeMovementCheckpoint) {
         guard !isShuttingDown,let index=tempShownItemContexts.firstIndex(where:{ $0.movementCheckpointID == checkpoint.id }) else { return }
         tempShownItemContexts[index].movementRollbackRequested=true
+        persistRestorationJournal()
         runTempShownItemTimer(for:1)
+    }
+
+    private func identity(_ item:MenuBarItem)->NativeRestorationIdentity {
+        NativeRestorationIdentity(namespace:item.info.namespace.rawValue,title:item.info.title,windowID:item.windowID)
+    }
+    private func uniqueMatch(_ saved:NativeRestorationIdentity,in items:[MenuBarItem])->MenuBarItem? {
+        guard saved.isStable else { return nil }
+        let matches=items.filter { $0.info.description == saved.key || $0.legacyIdentityKeys.contains(saved.key) }
+        return matches.count == 1 ? matches.first : nil
+    }
+    private func journalEntry(_ context:TempShownItemContext,items:[MenuBarItem])->NativeRestorationJournalEntry {
+        let target:MenuBarItem,side:NativeRestorationJournalEntry.Side
+        switch context.returnDestination {
+        case .leftOfItem(let item):target=item;side = .left
+        case .rightOfItem(let item):target=item;side = .right
+        }
+        let original=context.originalWindowOrder.map { id in
+            items.first(where:{$0.windowID == id}).map(identity) ?? NativeRestorationIdentity(namespace:"missing.window.\(id)",title:"",windowID:id)
+        }
+        let section=context.returnSection == .visible ? "visible" : (context.returnSection == .alwaysHidden ? "alwaysHidden" : "hidden")
+        return NativeRestorationJournalEntry(id:context.journalID,
+            item:NativeRestorationIdentity(namespace:context.info.namespace.rawValue,title:context.info.title,windowID:context.windowID),
+            target:identity(target),side:side,section:section,
+            sourceBundleID:context.sourcePID.flatMap { NSRunningApplication(processIdentifier:$0)?.bundleIdentifier }
+                ?? (context.info.namespace.rawValue.hasPrefix("unresolved.") ? nil : context.info.namespace.rawValue),
+            menuBand:NativeRestorationRect(context.menuBand),originalFrame:context.originalFrame.map(NativeRestorationRect.init),
+            originalOrder:original,originalOnScreen:context.originalOnScreen,recordedAt:Date().timeIntervalSince1970)
+    }
+    @discardableResult private func persistRestorationJournal()->Bool {
+        if restorationStore.error != nil,journalBacklog.isEmpty,tempShownItemContexts.isEmpty { return false }
+        let items=MenuBarItem.getMenuBarItems(onScreenOnly:false,activeSpaceOnly:true)
+        var records=journalBacklog
+        for context in tempShownItemContexts {
+            records.removeAll { $0.id == context.journalID }
+            records.append(journalEntry(context,items:items))
+        }
+        return restorationStore.save(records)
+    }
+    private func rebindJournalContexts() {
+        let items=MenuBarItem.getMenuBarItems(onScreenOnly:false,activeSpaceOnly:true)
+        for saved in journalBacklog {
+            guard let item=uniqueMatch(saved.item,in:items),
+                  saved.sourceBundleID == nil || item.owningApplication?.bundleIdentifier == saved.sourceBundleID else { continue }
+            let section:MenuBarSection.Name=saved.section == "visible" ? .visible : (saved.section == "alwaysHidden" ? .alwaysHidden : .hidden)
+            let matchedTarget=uniqueMatch(saved.target,in:items)
+            let target=matchedTarget ?? items.first { $0.info == (section == .alwaysHidden ? .alwaysHiddenControlItem : .hiddenControlItem) }
+            guard let target else { continue }
+            let side=matchedTarget == nil ? (section == .visible ? NativeRestorationJournalEntry.Side.right : .left) : saved.side
+            let mappedOrder=saved.originalOrder.compactMap { uniqueMatch($0,in:items)?.windowID }
+            var context=TempShownItemContext(windowID:item.windowID,info:item.info,
+                returnDestination:side == .left ? .leftOfItem(target) : .rightOfItem(target),returnSection:section,
+                sourcePID:item.sourcePID,menuBand:saved.menuBand.rect,
+                originalFrame:saved.originalFrame?.rect,originalWindowOrder:mappedOrder,originalOnScreen:saved.originalOnScreen)
+            context.journalID=saved.id
+            tempShownItemContexts.append(context)
+            journalBacklog.removeAll { $0.id == saved.id }
+        }
+    }
+    /// Runs before ordinary folding, pin reconciliation or hover is enabled.
+    /// Missing/ambiguous sources remain journaled; no source app is launched.
+    func recoverRestorationJournal(timeout:TimeInterval=2) async {
+        guard hasPendingRestorationJournal else { isRecoveringRestorationJournal=false;return }
+        isRecoveringRestorationJournal=true
+        activeNativeWorkCount += 1
+        defer { activeNativeWorkCount -= 1 }
+        guard let token=nativeLifecycle.beginRecovery(budget:min(3,max(0.25,timeout))) else { return }
+        defer { nativeLifecycle.finishRecovery();isRecoveringRestorationJournal=false;persistRestorationJournal() }
+        while !journalBacklog.isEmpty,nativeLifecycle.remainingTime>0.2,!Task.isCancelled {
+            rebindJournalContexts()
+            if !tempShownItemContexts.isEmpty { break }
+            try? await Task.sleep(for:.milliseconds(80))
+        }
+        for context in tempShownItemContexts.reversed() {
+            guard !Task.isCancelled,nativeLifecycle.accepts(token),NSEvent.pressedMouseButtons==0 else { break }
+            let items=MenuBarItem.getMenuBarItems(onScreenOnly:false,activeSpaceOnly:true)
+            guard let item=items.first(where:{$0.windowID == context.windowID}) else { continue }
+            if originalPositionEvidence(context,items:items).confirmsOriginalPosition {
+                tempShownItemContexts.removeAll { $0.journalID == context.journalID };continue
+            }
+            // A newly opened source popup is the user's work, not ours to dismiss.
+            if let index=tempShownItemContexts.firstIndex(where:{$0.journalID == context.journalID}) {
+                refreshShownInterfaces(at:index)
+                if tempShownItemContexts[index].isShowingInterface { continue }
+            }
+            guard let destination=currentReturnDestination(for:context,items:items) else { continue }
+            let lease=beginCursorLease(returnTo:MouseCursor.locationCoreGraphics)
+            do {
+                try await moveItemWithoutRestoringMouseLocation(item,to:destination,token:token)
+                let after=MenuBarItem.getMenuBarItems(onScreenOnly:false,activeSpaceOnly:true)
+                if originalPositionEvidence(context,items:after).confirmsOriginalPosition ||
+                   (try? itemHasCorrectPosition(item:item,for:destination)) == true {
+                    tempShownItemContexts.removeAll { $0.journalID == context.journalID }
+                }
+            } catch { Logger.itemManager.warning("Journal recovery still pending for \(item.logString): \(error)") }
+            endCursorLease(lease)
+        }
+        guard !nativeLifecycle.isStopping else { return }
+        // Do not loop failed startup movements during ordinary work. Keep the
+        // evidence for an explicit quit retry or the next launch.
+        let items=MenuBarItem.getMenuBarItems(onScreenOnly:false,activeSpaceOnly:true)
+        journalBacklog += tempShownItemContexts.map { journalEntry($0,items:items) }
+        tempShownItemContexts.removeAll()
+        if !journalBacklog.isEmpty || restorationStore.error != nil {
+            appState?.shelfManager.message=restorationStore.error ?? "上次退出有 \(journalBacklog.count) 项尚待恢复。原应用可用后，重启收纳或退出时选择再次恢复。"
+        }
+    }
+    func retryTerminationRestoration(timeout:TimeInterval=3) async -> NativeRestorationReport {
+        if let task=terminationTask { _=await task.value }
+        rebindJournalContexts()
+        let token=nativeLifecycle.renewRestorationBudget(min(3,max(0.25,timeout)))
+        let task=Task { await self.finishNativeTermination(token:token) }
+        terminationTask=task
+        return await task.value
     }
 
     /// Stops new native actions and restores this app's temporary item moves.
@@ -1937,6 +2195,8 @@ extension MenuBarItemManager {
     /// add at most its 250ms cancellation cleanup (synchronous OS calls excluded).
     func prepareForTermination(timeout: TimeInterval = 3) async -> NativeRestorationReport {
         if let terminationTask { return await terminationTask.value }
+        rebindJournalContexts()
+        persistRestorationJournal()
         let budget = min(3,max(0.25,timeout))
         let token = nativeLifecycle.beginTermination(budget:budget)
         cancellables.removeAll(); tempShownItemsTimer?.invalidate(); tempShownItemsTimer=nil
@@ -1958,7 +2218,7 @@ extension MenuBarItemManager {
     }
 
     private func finishNativeTermination(token: NativeInteractionLifecycle.Token) async -> NativeRestorationReport {
-        let start=ProcessInfo.processInfo.systemUptime, originalCount=tempShownItemContexts.count
+        let start=ProcessInfo.processInfo.systemUptime, originalCount=restorationJournalCount
         // Old event callbacks see an expired generation and cannot start a new
         // pickup. Let their bounded acknowledgements unwind before restoring.
         let settleDeadline=start+min(0.6,nativeLifecycle.remainingTime)
@@ -1975,12 +2235,20 @@ extension MenuBarItemManager {
             traceNativeRestore("termination-return-start",context:context,items:items)
             guard let item=items.first(where:{ $0.windowID == context.windowID }) else {
                 traceNativeRestore("termination-return-source-removed",context:context,items:items)
+                journalBacklog.removeAll { $0.id == context.journalID }
+                journalBacklog.append(journalEntry(context,items:items))
                 tempShownItemContexts.removeAll { $0.windowID == context.windowID }; continue
             }
             if originalPositionEvidence(context,items:items).confirmsOriginalPosition {
                 traceNativeRestore("termination-return-already-original",context:context,items:items)
                 tempShownItemContexts.removeAll { $0.windowID == context.windowID };continue
             }
+            #if MENUY_VERIFY
+            if NativeRestorationVerification.skipReturnOnce(namespace:context.info.namespace.rawValue) {
+                traceNativeRestore("verification-forced-restoration-failure-after-real-move",context:context,items:items)
+                continue
+            }
+            #endif
             guard let destination=currentReturnDestination(for:context,items:items) else {
                 traceNativeRestore("termination-return-no-destination",context:context,items:items);continue
             }
@@ -2018,15 +2286,19 @@ extension MenuBarItemManager {
         }
         nativeLifecycle.finishTermination()
         releaseSyntheticPress(); releaseCursorLeases()
-        return NativeRestorationReport(restoredCount:max(0,originalCount-tempShownItemContexts.count),
-            remainingWindowIDs:tempShownItemContexts.map(\.windowID),elapsed:ProcessInfo.processInfo.systemUptime-start)
+        let saved=persistRestorationJournal()
+        return NativeRestorationReport(restoredCount:max(0,originalCount-restorationJournalCount),
+            remainingWindowIDs:NativeReturnEvidence.unique(tempShownItemContexts.map(\.windowID)+journalBacklog.map { $0.item.windowID }),
+            elapsed:ProcessInfo.processInfo.systemUptime-start,journalSaved:saved,
+            journalPendingCount:restorationJournalCount,journalError:restorationStore.error)
     }
 
     private func dismissOriginalInterface(_ context: TempShownItemContext) {
         for observed in context.shownInterfaceWindows {
             guard let window=WindowInfo(windowID:observed.windowID),window.isOnScreen,
                   NativeInteractionPolicy.retainsTemporaryItem(layer:window.layer,frame:window.frame,
-                    popupLayer:Int(CGWindowLevelForKey(.popUpMenuWindow)),menuBand:context.menuBand),
+                    popupLayer:Int(CGWindowLevelForKey(.popUpMenuWindow)),menuBand:context.menuBand,
+                    isNewlyOpened:!context.originalOnScreenWindowIDs.contains(window.windowID)),
                   let down=CGEvent(keyboardEventSource:nil,virtualKey:53,keyDown:true),
                   let up=CGEvent(keyboardEventSource:nil,virtualKey:53,keyDown:false) else { continue }
             for event in [down,up] {
@@ -2043,6 +2315,7 @@ extension MenuBarItemManager {
     /// This ensures that the item will _not_ be returned to its previous location.
     func removeTempShownItemFromCache(with windowID: CGWindowID) {
         tempShownItemContexts.removeAll { $0.windowID == windowID && $0.movementCheckpointID == nil }
+        persistRestorationJournal()
     }
 }
 

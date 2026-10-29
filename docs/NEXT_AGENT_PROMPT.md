@@ -1,0 +1,3 @@
+# 给下一位 agent 的任务说明
+
+请接手 `/Users/mac/workspaces/MacMenuY`，先阅读 `docs/RESIDUAL_HANDOFF.md`，保留当前未提交修改并核实正在运行的进程。用户要求关闭虚拟机、直接在本机解决收纳栏图标的原生双指右键兼容；VM 已关闭，不要重启。目前真实 InputView→F32 的 `NSStatusItem.menu` 右键确实打开，但意外携带 Command；另一次 modifiers=[] 的后端诊断能打开菜单，却没有执行原 `Record selection` 回调。请定位输入修饰键来源与菜单保持/键盘选择问题，先对同一项建立原菜单栏 vs 收纳栏的真实左/右/Option 基线，同时覆盖 custom-action 和原生 `.menu`、可见及隐藏后临时移出的项。注意 AX 菜单遍历会制造假打开回执、tap echo 不等于客户端响应，不能简单过滤 Command、把右键改成左键或用后端直调代替实际 UI 验收。修复后完成真实应用兼容、固定/收回、hover/焦点/离开、设置/indicator，以及 active-menu quit 和 journal 故障恢复；最后重新构建无调试正式版并验证交付。当前 PID/窗口 ID/证据、复现命令及已排除假设都在文档；本轮一分钟鼠标独占已结束，需要交互测试时再协调。不要在运行中的 bundle 上覆盖构建，也不要把源码测试通过当作全部 solid。

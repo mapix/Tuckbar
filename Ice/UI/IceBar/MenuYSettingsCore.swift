@@ -42,12 +42,15 @@ struct MenuYStoredPreferences: Codable, Equatable {
     var sortMode = MenuYSortMode.original
     var rules = [MenuYSortRule]()
     var activityEnabled = true
+    var hoverEnterDelay = 0.15
+    var hoverLeaveDelay = 0.25
     var ignoredApps = Set<String>()
     var lastUsed = [String: Double]()
 
     init(opacity: Double = defaultOpacity, iconSize: Double = defaultIconSize,
          style: MenuYBarStyle = .native, sortMode: MenuYSortMode = .original,
          rules: [MenuYSortRule] = [], activityEnabled: Bool = true,
+         hoverEnterDelay: Double = 0.15, hoverLeaveDelay: Double = 0.25,
          ignoredApps: Set<String> = [], lastUsed: [String: Double] = [:]) {
         self.opacity = Self.validOpacity(opacity)
         self.iconSize = Self.validIconSize(iconSize)
@@ -55,11 +58,13 @@ struct MenuYStoredPreferences: Codable, Equatable {
         self.sortMode = sortMode
         self.rules = Self.validRules(rules)
         self.activityEnabled = activityEnabled
+        self.hoverEnterDelay = Self.validEnterDelay(hoverEnterDelay)
+        self.hoverLeaveDelay = Self.validLeaveDelay(hoverLeaveDelay)
         self.ignoredApps = ignoredApps
         self.lastUsed = Self.validHistory(lastUsed)
     }
     private enum CodingKeys: String, CodingKey {
-        case opacity, iconSize, style, sortMode, rules, activityEnabled, ignoredApps, lastUsed
+        case opacity, iconSize, style, sortMode, rules, activityEnabled, hoverEnterDelay, hoverLeaveDelay, ignoredApps, lastUsed
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -70,12 +75,16 @@ struct MenuYStoredPreferences: Codable, Equatable {
             sortMode: (try? c.decode(MenuYSortMode.self, forKey: .sortMode)) ?? .original,
             rules: (try? c.decode([MenuYSortRule].self, forKey: .rules)) ?? [],
             activityEnabled: (try? c.decode(Bool.self, forKey: .activityEnabled)) ?? true,
+            hoverEnterDelay: (try? c.decode(Double.self, forKey: .hoverEnterDelay)) ?? 0.15,
+            hoverLeaveDelay: (try? c.decode(Double.self, forKey: .hoverLeaveDelay)) ?? 0.25,
             ignoredApps: (try? c.decode(Set<String>.self, forKey: .ignoredApps)) ?? [],
             lastUsed: (try? c.decode([String: Double].self, forKey: .lastUsed)) ?? [:]
         )
     }
     static func validOpacity(_ n: Double) -> Double { n.isFinite ? min(1, max(0.4, n)) : defaultOpacity }
     static func validIconSize(_ n: Double) -> Double { n.isFinite ? min(36, max(16, n.rounded())) : defaultIconSize }
+    static func validEnterDelay(_ n: Double) -> Double { n.isFinite ? min(0.8, max(0.05, (n * 100).rounded() / 100)) : 0.15 }
+    static func validLeaveDelay(_ n: Double) -> Double { n.isFinite ? min(1.5, max(0.1, (n * 100).rounded() / 100)) : 0.25 }
     static func validRules(_ input: [MenuYSortRule]) -> [MenuYSortRule] {
         var seen = Set<UUID>()
         return input.prefix(128).filter { seen.insert($0.id).inserted }.map { rule in

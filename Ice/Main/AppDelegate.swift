@@ -94,13 +94,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appState,!appState.menuBarManager.sections.isEmpty else { return .terminateNow }
         if isTerminationPending { return .terminateLater }
         isTerminationPending=true
+        appState.cancelPendingSetup()
         appState.hover.stop()
         appState.menuBarManager.iceBarPanel.close()
         appState.imageCache.stop()
         Task { @MainActor in
-            let report=await appState.itemManager.prepareForTermination(timeout:3)
+            var report=await appState.itemManager.prepareForTermination(timeout:3)
+            if !report.completed {
+                var saveWithoutPrompt=false
+                #if MENUY_VERIFY
+                saveWithoutPrompt=NativeRestorationVerification.saveWithoutPrompt
+                #endif
+                if !saveWithoutPrompt {
+                    let alert=NSAlert()
+                    alert.messageText="部分菜单栏项目尚未恢复"
+                    alert.informativeText="尚有 \(report.remainingWindowIDs.count) 项未确认回到原位置。\(report.journalError ?? "恢复记录已保存在本机，下次启动会在原应用可用且身份唯一时重试。")\n退出不会继续普通操作，也不会自动启动其他应用。"
+                    alert.addButton(withTitle:"退出并保留恢复记录")
+                    alert.addButton(withTitle:"再尝试一次并退出")
+                    if alert.runModal() == .alertSecondButtonReturn {
+                        report=await appState.itemManager.retryTerminationRestoration(timeout:3)
+                        if !report.completed {
+                            let pending=NSAlert()
+                            pending.messageText="恢复仍未完成"
+                            pending.informativeText=report.journalError ?? "恢复记录已保留，下次启动将有界重试。现在退出。"
+                            pending.addButton(withTitle:"退出")
+                            pending.runModal()
+                        }
+                    }
+                }
+            }
             let value:[String:Any]=["restored":report.restoredCount,"remaining":report.remainingWindowIDs,
-                                   "elapsed":report.elapsed]
+                                   "elapsed":report.elapsed,"journalPending":report.journalPendingCount,
+                                   "journalSaved":report.journalSaved,"journalError":report.journalError ?? ""]
             let args=ProcessInfo.processInfo.arguments
             if let i=args.firstIndex(of:"--diagnostics-path"),args.indices.contains(i+1),
                let data=try? JSONSerialization.data(withJSONObject:value,options:[.prettyPrinted,.sortedKeys]) {

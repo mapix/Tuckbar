@@ -46,6 +46,16 @@ final class MenuYHoverController {
         RunLoop.main.add(poll, forMode: .common)
         appState.shelfManager.$isBusy.removeDuplicates().receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.evaluate() }.store(in: &subscriptions)
+        appState.shelfManager.$isEditing.removeDuplicates().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.evaluate() }.store(in: &subscriptions)
+        Publishers.CombineLatest(appState.preferences.$hoverEnterDelay, appState.preferences.$hoverLeaveDelay)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enter, leave in
+                guard let self else { return }
+                self.policy.enterDelay = max(0.05, enter)
+                self.policy.leaveDelay = max(0.1, leave)
+                self.evaluate()
+            }.store(in: &subscriptions)
         appState.shelfManager.$isEnabled.removeDuplicates().receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -139,11 +149,14 @@ final class MenuYHoverController {
             // unmoving pointer is not a fresh hover-enter gesture.
             policy.primeEntry(insideEntry); didPrimeNativeRegion = true
         }
-        let insideShelf = panel.isVisible && MenuYHoverPolicy.contains(latestPoint, in: [panel.frame])
+        let insideShelf = panel.isVisible && MenuYHoverPolicy.contains(latestPoint, in: [
+            panel.frame.insetBy(dx: -8, dy: -10).offsetBy(dx: 0, dy: 4)
+        ])
         let action = policy.update(entryInside: insideEntry, shelfInside: insideShelf,
             visible: panel.isVisible, opening: openingTask != nil,
             busy: appState.shelfManager.isBusy,
-            now: ProcessInfo.processInfo.systemUptime, keepOpen: keepOpenForVerification)
+            now: ProcessInfo.processInfo.systemUptime,
+            keepOpen: keepOpenForVerification || appState.shelfManager.isEditing)
         switch action {
         case .none: break
         case .show:

@@ -20,3 +20,6 @@ swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeReturnEvidence.swift Tes
 build/tests/native-return-tests | tee artifacts/native-return-tests.txt
 swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeEventCompletion.swift Tests/NativeEventCompletionTests.swift -o build/tests/native-event-tests
 build/tests/native-event-tests | tee artifacts/native-event-tests.txt
+
+swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeRestorationJournal.swift Ice/MenuBar/MenuBarItems/NativeInteractionLifecycle.swift Tests/NativeRestorationJournalTests.swift -o build/tests/restoration-journal-tests
+build/tests/restoration-journal-tests | tee artifacts/restoration-journal-tests.txt

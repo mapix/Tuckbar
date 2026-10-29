@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tuckbar — macOS 二级菜单栏收纳神器</title>
+  <meta name="description" content="Tuckbar 将杂乱的 macOS 顶部菜单栏优雅地收纳进悬浮展开的二级抽屉。完整支持原生左键、右键、修饰键穿透、图钉整理锁定与本地检索。" />
+  <link rel="icon" type="image/png" href="/assets/favicon.png" />
+  <style>
+    :root {
+      --bg: #070b16;
+      --bg-card: rgba(17, 25, 48, 0.72);
+      --border: rgba(255, 255, 255, 0.11);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #6366f1;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+      background: radial-gradient(circle at 50% 0%, #172554 0%, #070b16 62%);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 24px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .nav-links { display: flex; align-items: center; gap: 24px; font-size: 14px; color: var(--muted); }
+    .nav-links a:hover { color: var(--text); }
+    .hero { text-align: center; padding: 84px 0 64px; }
+    .hero-icon {
+      width: 128px; height: 128px; margin: 0 auto 24px;
+      filter: drop-shadow(0 20px 40px rgba(56, 189, 248, 0.25));
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #7dd3fc; font-size: 13px; font-weight: 500; margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(38px, 6vw, 62px);
+      font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 20%, #93c5fd 70%, #818cf8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      max-width: 680px; margin: 0 auto 36px;
+      font-size: 19px; color: var(--muted); font-weight: 400;
+    }
+    .cta-group { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 15px 30px; border-radius: 14px;
+      background: linear-gradient(135deg, #0284c7, #4f46e5);
+      color: #fff; font-weight: 600; font-size: 16px;
+      box-shadow: 0 12px 32px rgba(56, 189, 248, 0.28), inset 0 1px 0 rgba(255,255,255,0.25);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(56, 189, 248, 0.38); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 15px 26px; border-radius: 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text); font-weight: 600; font-size: 16px;
+      transition: background 0.15s ease;
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.11); }
+    .meta-info { font-size: 13px; color: var(--muted); }
+    .mockup {
+      margin: 48px auto 72px; max-width: 920px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 20px; overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(24px);
+    }
+    .mockup-top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px; background: rgba(255, 255, 255, 0.07);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 13px; font-weight: 500;
+    }
+    .mockup-shelf { padding: 18px 22px; }
+    .shelf-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 14px; margin-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-wrap: wrap; gap: 12px;
+    }
+    .search-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      font-size: 12.5px; color: #cbd5e1;
+    }
+    .pin-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      background: #3b82f6; color: #fff; font-size: 12px; font-weight: 600;
+    }
+    .shelf-icons {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    }
+    .shelf-item {
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 36px; border-radius: 9px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+      font-size: 18px; position: relative;
+    }
+    .shelf-item.pinned {
+      background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.55);
+    }
+    .features {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px; padding: 24px 0 84px;
+    }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 18px; padding: 28px;
+      backdrop-filter: blur(16px);
+    }
+    .card h3 { font-size: 19px; margin-bottom: 10px; color: #fff; }
+    .card p { font-size: 14.5px; color: var(--muted); }
+    footer {
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding: 36px 0; text-align: center; color: var(--muted); font-size: 13.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/" class="brand">
+        <img src="/assets/icon-256.png" alt="Tuckbar" />
+        <span>Tuckbar</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">核心特性</a>
+        <a href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">GitHub</a>
+        <a href="/download/latest.json" target="_blank">版本清单</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <img class="hero-icon" src="/assets/tuckbar-icon-1024.png" alt="Tuckbar App Icon" />
+      <div>
+        <span class="badge">✨ 专为 macOS Sequoia &amp; Tahoe 打造 · 开源免费</span>
+      </div>
+      <h1>菜单栏，优雅收进二级抽屉。</h1>
+      <p class="subtitle">
+        Tuckbar 将顶部拥挤的状态栏图标收进一个入口。鼠标轻触即在菜单栏正下方滑出整屏二级收纳栏，支持原生左键、右键菜单穿透与图钉锁定整理，不受刘海屏遮挡。
+      </p>
+      <div class="cta-group">
+        <a id="download-btn" class="btn-primary" href="/download/Tuckbar-latest.zip">
+          <span>⬇ 下载 Tuckbar for macOS</span>
+        </a>
+        <a class="btn-secondary" href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">
+          <span>★ GitHub 源码 (mapix/Tuckbar)</span>
+        </a>
+      </div>
+      <p class="meta-info" id="version-meta">
+        支持 macOS 14.0+ (Apple Silicon &amp; Intel) · Developer ID 签名 · GPL-3.0 开源
+      </p>
+
+      <div class="mockup">
+        <div class="mockup-top">
+          <span> &nbsp; <strong>Tuckbar</strong> &nbsp; 文件 &nbsp; 编辑 &nbsp; 视图</span>
+          <span><strong style="color:#38bdf8;">▾ Tuckbar (18)</strong> &nbsp; Wi-Fi &nbsp; 100% &nbsp; 周五 00:42</span>
+        </div>
+        <div class="mockup-shelf">
+          <div class="shelf-toolbar">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="search-pill">🔍 检索全部菜单栏项目...</span>
+              <span style="font-size:12px;color:#94a3b8;">14 收起 · 4 常驻</span>
+              <span class="pin-pill">📌 整理锁定中 · 自动收起已暂停</span>
+            </div>
+            <div style="display:flex;gap:8px;font-size:12px;color:#cbd5e1;">
+              <span class="pin-pill">完成整理</span>
+              <span class="search-pill">⚙ 设置</span>
+            </div>
+          </div>
+          <div class="shelf-icons">
+            <div class="shelf-item pinned" title="常驻菜单栏">💬</div>
+            <div class="shelf-item pinned" title="常驻菜单栏">🎵</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🐳</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🦙</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🌐</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">☕️</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">⚡️</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🛡</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">📦</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🔔</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">☁️</div>
+            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">⌨️</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="features">
+      <div class="card">
+        <h3>🖱 二级菜单栏原生左/右键穿透</h3>
+        <p>在展开的二级收纳栏内，无论是左键、右键还是按住 Option 点击，都能直接打开并保持飞书、Chrome、Ollama、Docker 等第三方应用的原生菜单。</p>
+      </div>
+      <div class="card">
+        <h3>📌 图钉整理模式自动锁定</h3>
+        <p>点击工具栏「整理（图钉）」按钮进入编辑状态时，二级收纳栏自动锁定不隐藏，让您从容点击每个图标切换「顶部常驻」或「收起」状态，退出整理后自动恢复悬浮收起。</p>
+      </div>
+      <div class="card">
+        <h3>⏱ 可自定义的悬浮与收起时机</h3>
+        <p>内置防抖动意图识别与边缘缓冲带，支持在设置中自由调节悬浮展开延迟（50–600ms）与离开自动隐藏延迟（100–1200ms），不抢占当前活跃窗口焦点。</p>
+      </div>
+      <div class="card">
+        <h3>🎨 原生壁纸融合与多尺寸布局</h3>
+        <p>实时采样系统菜单栏壁纸与明暗色彩，提供「原生菜单栏」「玻璃质感」「紧凑」三种风格及 16–36pt 图标尺寸，完美避开 MacBook 刘海区域。</p>
+      </div>
+      <div class="card">
+        <h3>🔔 智能图标变化与未读徽标提示</h3>
+        <p>自动比对收纳栏内图标像素指纹与无障碍未读消息数，当收起的应用有新消息或状态更新时，在顶部唯一入口直接展示提示，不错过重要通知。</p>
+      </div>
+      <div class="card">
+        <h3>🔒 100% 本地运行 · 退出自动归位</h3>
+        <p>所有图像捕获与事件路由均在本地完成，无任何网络请求或遥测上传。退出 Tuckbar 时自动将临时展开的图标归位，保持系统菜单栏干净有序。</p>
+      </div>
+    </section>
+
+    <footer>
+      <p>© 2026 Tuckbar Contributors · 基于 GPL-3.0 协议开源 · <a href="https://github.com/mapix/Tuckbar" style="color:#38bdf8;">GitHub @mapix/Tuckbar</a></p>
+    </footer>
+  </div>
+  <script>
+    fetch('/download/latest.json')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        const btn = document.getElementById('download-btn');
+        const meta = document.getElementById('version-meta');
+        if (btn && data.file) {
+          btn.href = '/download/' + data.file;
+          btn.innerHTML = '<span>⬇ 下载 Tuckbar v' + data.version + ' (' + data.size + ')</span>';
+        }
+        if (meta && data.sha256) {
+          meta.textContent = '版本 v' + data.version + ' · 大小 ' + data.size + ' · SHA-256: ' + data.sha256.slice(0, 16) + '… · 支持 macOS 14+';
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

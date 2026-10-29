@@ -1,39 +1,42 @@
-# MacMenuY
+# Tuckbar
 
-原生 macOS 菜单栏收纳应用，SwiftUI + AppKit。悬浮真实收纳入口，在正式菜单栏下方展开整屏横向收纳栏；鼠标离开入口和收纳栏后自动收起。
+<p align="center">
+  <img src="landing/assets/icon-256.png" width="120" height="120" alt="Tuckbar Icon" />
+</p>
 
-## 交互
+**Tuckbar** 是一款原生 macOS 二级菜单栏收纳应用（SwiftUI + AppKit）。将顶部菜单栏杂乱的图标收进一个入口，鼠标悬浮即在系统菜单栏正下方丝滑展开二级横向收纳栏；离开后自动收起。
 
-- 原菜单栏使用原生分隔项折叠，不覆盖原菜单栏。无法控制的系统项目保持原样。
-- 收纳栏保留原图标、文字、徽标，支持检索、自动换行与滚动。
-- 普通点击打开原应用菜单；右键、Option 等修饰键按原方式传递。
-- 图钉整理模式或「项目管理」页将可控项目真实移回原菜单栏，再点一次收回。
-- 独立原生设置页提供样式、16–36pt 图标、排序预设和通配优先规则。
-- 默认不透明度 90%。悬浮展示不主动夺走工作 App 的焦点。
-- 原生入口统一提示图标变化；仅当应用明确提供未读数时显示未读数。查询暂时失败会保留上次确认值，避免将未知当成 0。
-- 入口右键、收纳栏和设置页均可启用/停用或退出。
+- **官方网站与下载**：[https://tuckbar.novarock.io](https://tuckbar.novarock.io)
+- **GitHub 仓库**：[https://github.com/mapix/Tuckbar](https://github.com/mapix/Tuckbar)
 
-## 构建
+## 核心特性
 
-要求 Xcode 26 / Swift 6 工具链。本机验证目标为 macOS 26.4.1、Apple Silicon；Release 同时构建 arm64 与 x86_64。
+- **二级菜单栏原生左/右键穿透**：在展开的二级收纳栏内，无论是左键、右键还是按住 `Option` 点击，都能直接打开并保持飞书、Chrome、Ollama、Docker 等第三方应用的原生菜单。
+- **图钉整理模式自动锁定**：点击二级收纳栏工具栏中的「整理（图钉）」按钮进入编辑状态时，面板自动锁定不隐藏，方便逐个点击图标切换「常驻顶部菜单栏」或「收起」状态；点击「完成整理」后立即恢复自动悬浮收起。
+- **可自定义的悬浮与收起时机**：内置防抖动意图识别与边缘缓冲带，支持在设置中自由调节悬浮展开延迟（50–600ms，默认 150ms）与离开自动隐藏延迟（100–1200ms，默认 250ms），且展开/收起全程不抢占当前活跃应用焦点。
+- **原生壁纸融合与多尺寸布局**：实时采样系统菜单栏壁纸与明暗色彩，提供「原生菜单栏」「玻璃质感」「紧凑」三种风格及 `16–36pt` 图标尺寸、排序预设和通配优先规则，自动避开 MacBook 刘海区域。
+- **智能变化与未读提醒**：顶部唯一入口统一提示收納图标的像素变化或无障碍未读消息数。
+- **100% 本地运行 & 退出自动归位**：所有图像捕获与事件路由均在本机完成，无任何远程请求或遥测上传。退出 Tuckbar 时自动将临时展开的图标归位。
+
+## 构建与验证
+
+要求 Xcode 26 / Swift 6 工具链（同时构建 `arm64` 与 `x86_64` Universal Binary）：
 
 ```sh
 bash scripts/build.sh
 bash scripts/verify-core.sh
 ```
 
-脚本默认使用本机已有 Developer ID 身份；可用 `MENUY_SIGN_IDENTITY` / `MENUY_TEAM` 覆盖。无需服务器、账户或上传数据。
+脚本默认使用本机 Developer ID 身份签名；可用 `MENUY_SIGN_IDENTITY` / `MENUY_TEAM` 覆盖。
 
-### 原生调试验收
+### 部署分发站点
 
 ```sh
-MENUY_DERIVED_DATA=build/Verification MENUY_SWIFT_FLAGS=MENUY_VERIFY bash scripts/build.sh
+bash deploy/deploy.sh
 ```
 
-仅该编译条件启用原生验收面板和固定展开等调试功能。正式构建没有调试面板。真实客户端 fixture、命令文件和证据字段见 [原菜单交互验收](docs/NATIVE_INTERACTION.md)。当前运行验收范围与结果见 [验证记录](docs/VERIFICATION.md)。
+## 开源许可与致谢
 
-## 权限与来源
+辅助功能权限用于原生菜单栏图标移动与点击事件路由；屏幕录制权限用于本机镜像图标与菜单栏背景。
 
-辅助功能用于原生移动/菜单交互；屏幕录制用于本机镜像图标和菜单栏背景。原图标由原应用拥有，App 不改动原应用源码、包或系统安全设置。
-
-源自 Ice 菜单栏引擎，包含 Tahoe 兼容修正。GPL-3.0，保留原作者版权和依赖许可，见 [NOTICE](NOTICE.md) 与 [LICENSE](LICENSE)。
+底层菜单栏管理引擎源自 [Ice](https://github.com/jordanbaird/Ice) 及 [icey](https://github.com/leonardovida/icey)，遵循 **GPL-3.0** 协议开源，详见 [NOTICE](NOTICE.md) 与 [LICENSE](LICENSE)。

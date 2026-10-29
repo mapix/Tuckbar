@@ -24,6 +24,47 @@ final class MenuBarItemImageCache: ObservableObject {
     /// Storage for internal observers.
     private var cancellables = Set<AnyCancellable>()
     private var updateTask: Task<Void, Never>?
+    private var itemCacheAtLastPublish: MenuBarItemManager.ItemCache?
+
+    /// Dedicated serial queue for blocking WindowServer capture calls, keeping
+    /// ScreenCaptureKit / SLSWindowListCreateImageFromArrayProxying off the
+    /// Swift concurrency cooperative thread pool (inspired by leonardovida/icey).
+    private static let captureQueue = DispatchQueue(
+        label: "io.novarock.MacMenuY.ImageCapture",
+        qos: .userInitiated
+    )
+
+    private nonisolated static func onCaptureQueue(_ work: @escaping @Sendable () -> [CGWindowID: CGImage]) async -> [CGWindowID: CGImage] {
+        await withCheckedContinuation { continuation in
+            captureQueue.async {
+                continuation.resume(returning: work())
+            }
+        }
+    }
+
+    nonisolated private static func hasSamePixels(_ a: CGImage, _ b: CGImage) -> Bool {
+        if a === b { return true }
+        guard a.width == b.width, a.height == b.height, a.width > 0, a.height > 0,
+              a.bitsPerComponent == b.bitsPerComponent, a.bitsPerPixel == b.bitsPerPixel,
+              a.bytesPerRow == b.bytesPerRow, a.bitmapInfo == b.bitmapInfo,
+              let dataA = a.dataProvider?.data, let dataB = b.dataProvider?.data,
+              let bytesA = CFDataGetBytePtr(dataA), let bytesB = CFDataGetBytePtr(dataB) else {
+            return false
+        }
+        let bytesPerRow = a.bytesPerRow
+        let rowLength = (a.width * a.bitsPerPixel + 7) / 8
+        let requiredLength = (a.height - 1) * bytesPerRow + rowLength
+        guard CFDataGetLength(dataA) >= requiredLength, CFDataGetLength(dataB) >= requiredLength else {
+            return false
+        }
+        for row in 0..<a.height {
+            let offset = row * bytesPerRow
+            if memcmp(bytesA + offset, bytesB + offset, rowLength) != 0 {
+                return false
+            }
+        }
+        return true
+    }
 
     /// Creates a cache with the given app state.
     init(appState: AppState) {
@@ -112,10 +153,10 @@ final class MenuBarItemImageCache: ObservableObject {
         let backingScaleFactor = screen.backingScaleFactor
         let displayBounds = CGDisplayBounds(screen.displayID)
         let thickness = NSStatusBar.system.thickness
-        return await Task.detached(priority:.utility) {
-            Self.captureImages(items:items,backingScaleFactor:backingScaleFactor,
-                               displayBounds:displayBounds,thickness:thickness)
-        }.value
+        return await Self.onCaptureQueue {
+            Self.captureImages(items: items, backingScaleFactor: backingScaleFactor,
+                               displayBounds: displayBounds, thickness: thickness)
+        }
     }
     nonisolated private static func captureImages(items:[MenuBarItem], backingScaleFactor:CGFloat,
                                                   displayBounds:CGRect, thickness:CGFloat) -> [CGWindowID:CGImage] {
@@ -132,7 +173,7 @@ final class MenuBarItemImageCache: ObservableObject {
             guard
                 // Use the most up-to-date window frame.
                 let itemFrame = Bridging.getWindowFrame(for: windowID),
-                itemFrame.minY == displayBounds.minY
+                abs(itemFrame.minY - displayBounds.minY) <= 4
             else {
                 continue
             }
@@ -142,50 +183,62 @@ final class MenuBarItemImageCache: ObservableObject {
         }
 
         if
-            let compositeImage = ScreenCapture.captureWindows(windowIDs, option: option),
-            CGFloat(compositeImage.width) == frame.width * backingScaleFactor
+            frame.width > 0,
+            let compositeImage = ScreenCapture.captureWindows(windowIDs, option: option)
         {
-            for windowID in windowIDs {
-                guard let itemFrame = itemFrames[windowID] else {
-                    continue
+            let actualScale = CGFloat(compositeImage.width) / frame.width
+            if actualScale >= 0.5 && actualScale <= 4.0 {
+                let scaledThickness = thickness * actualScale
+                var failedIDs = [CGWindowID]()
+                for windowID in windowIDs {
+                    guard let itemFrame = itemFrames[windowID] else {
+                        continue
+                    }
+
+                    let cropFrame = CGRect(
+                        x: (itemFrame.origin.x - frame.origin.x) * actualScale,
+                        y: (itemFrame.origin.y - frame.origin.y) * actualScale + max(0, (itemFrame.height * actualScale - scaledThickness) / 2),
+                        width: itemFrame.width * actualScale,
+                        height: min(scaledThickness, itemFrame.height * actualScale)
+                    )
+
+                    if let itemImage = compositeImage.cropping(to: cropFrame) {
+                        images[windowID] = itemImage
+                    } else {
+                        failedIDs.append(windowID)
+                    }
                 }
-
-                let cropFrame = CGRect(
-                    x: (itemFrame.origin.x - frame.origin.x) * backingScaleFactor,
-                    y: (itemFrame.origin.y-frame.origin.y)*backingScaleFactor + max(0,(itemFrame.height*backingScaleFactor-defaultItemThickness)/2),
-                    width: itemFrame.width * backingScaleFactor,
-                    height: min(defaultItemThickness,itemFrame.height*backingScaleFactor)
-                )
-
-                guard let itemImage = compositeImage.cropping(to: cropFrame) else {
-                    continue
+                if failedIDs.isEmpty {
+                    return images
                 }
-
-                images[windowID] = itemImage
+                windowIDs = failedIDs
             }
-        } else {
-            Logger.imageCache.warning("Composite image capture failed. Attempting to capturing items individually.")
+        }
+
+        if !windowIDs.isEmpty {
+            Logger.imageCache.warning("Composite image capture incomplete. Capturing remaining items individually.")
 
             for windowID in windowIDs {
-                guard let itemFrame = itemFrames[windowID] else {
+                guard let itemFrame = itemFrames[windowID], itemFrame.width > 0 else {
                     continue
                 }
 
+                guard let itemImage = ScreenCapture.captureWindow(windowID, option: option) else {
+                    continue
+                }
+                let actualScale = (CGFloat(itemImage.width) / itemFrame.width)
+                let scale = (actualScale >= 0.5 && actualScale <= 4.0) ? actualScale : backingScaleFactor
+                let scaledThickness = thickness * scale
                 let cropFrame = CGRect(
                     x: 0,
-                    y: ((itemFrame.height * backingScaleFactor) / 2) - (defaultItemThickness / 2),
-                    width: itemFrame.width * backingScaleFactor,
-                    height: defaultItemThickness
+                    y: max(0, ((itemFrame.height * scale) / 2) - (scaledThickness / 2)),
+                    width: itemFrame.width * scale,
+                    height: min(scaledThickness, itemFrame.height * scale)
                 )
 
-                guard
-                    let itemImage = ScreenCapture.captureWindow(windowID, option: option),
-                    let croppedImage = itemImage.cropping(to: cropFrame)
-                else {
-                    continue
+                if let croppedImage = itemImage.cropping(to: cropFrame) {
+                    images[windowID] = croppedImage
                 }
-
-                images[windowID] = croppedImage
             }
         }
 
@@ -212,13 +265,24 @@ final class MenuBarItemImageCache: ObservableObject {
             newImages.merge(sectionImages) { _,new in new }
         }
         guard !Task.isCancelled,!appState.itemManager.isMovingItem else { return }
-        let liveIDs=Set(appState.itemManager.itemCache.allItems.map(\.windowID))
+        let currentCache = appState.itemManager.itemCache
+        let liveIDs=Set(currentCache.allItems.map(\.windowID))
         var updated=images.filter { liveIDs.contains($0.key) }
-        for (id,image) in newImages where liveIDs.contains(id) { updated[id]=image }
+        var changed = updated.count != images.count || itemCacheAtLastPublish != currentCache
+        for (id,image) in newImages where liveIDs.contains(id) {
+            if let existing = updated[id], Self.hasSamePixels(existing, image) {
+                continue
+            }
+            updated[id] = image
+            changed = true
+        }
         // Publish the screen metadata before the image dictionary on the same actor.
         screen=targetScreen
         menuBarHeight=targetScreen.getMenuBarHeight()
-        images=updated
+        if changed {
+            images=updated
+            itemCacheAtLastPublish = currentCache
+        }
     }
 
     /// Updates the cache for the given sections, if necessary.

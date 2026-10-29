@@ -2,7 +2,7 @@
 import AppKit
 import Darwin
 
-/// Only an isolated macOS guest can enable this local test command surface.
+/// Only an explicitly selected test environment can enable this local surface.
 /// It invokes the shipping native paths and reports real fixture callbacks;
 /// transport completion is never treated as proof that an original menu ran.
 @MainActor final class MenuYVerificationCommands {
@@ -33,7 +33,8 @@ import Darwin
         sysctlString("hw.model").lowercased().hasPrefix("virtualmac")
     }
     private func start(appState: AppState) {
-        guard timer == nil, ProcessInfo.processInfo.arguments.contains("--verification-guest"), Self.isVirtualMac,
+        let guest = ProcessInfo.processInfo.arguments.contains("--verification-guest") && Self.isVirtualMac
+        guard timer == nil, guest || NativeRestorationVerification.isHost,
               let path = argument("--verification-command-file") else { return }
         self.appState = appState
         commandFile = URL(fileURLWithPath: path)
@@ -164,9 +165,7 @@ import Darwin
         }
         var selected = false
         if command["select"] as? Bool == true, opened, let pid = item.sourcePID {
-            postKey(125, pid: pid)
-            try? await Task.sleep(for: .milliseconds(70))
-            postKey(36, pid: pid)
+            selectOpenFixtureMenuItem(index: index, pid: pid)
             selected = await wait(3) {
                 self.fixtureEvents().dropFirst(before).contains { ($0["selection"] as? Int) == index && ($0["timestamp"] as? Double ?? 0) >= started }
             }
@@ -239,11 +238,60 @@ import Darwin
     private func movePointer(_ point: CGPoint) {
         CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
     }
+    private func selectOpenFixtureMenuItem(index: Int, pid: pid_t) {
+        guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "io.novarock.MacMenuY.Fixture" else { return }
+        let popupLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.5
+        var popupFrame: CGRect?
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            if let win = WindowInfo.getOnScreenWindows().first(where: {
+                $0.ownerPID == pid && $0.layer == popupLayer && $0.frame.width > 40 && $0.frame.height > 40
+            }) {
+                popupFrame = win.frame
+                break
+            }
+            usleep(15_000)
+        }
+        guard let frame = popupFrame else {
+            postKey(125, pid: pid)
+            postKey(36, pid: pid)
+            return
+        }
+        let original = CGEvent(source: nil)?.location
+        let point = CGPoint(x: frame.midX, y: frame.minY + 42)
+        let source = CGEventSource(stateID: .hidSystemState)
+        CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(25_000)
+        if let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            down.setIntegerValueField(.mouseEventClickState, value: 1)
+            down.post(tap: .cghidEventTap)
+        }
+        usleep(25_000)
+        if let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            up.setIntegerValueField(.mouseEventClickState, value: 1)
+            up.post(tap: .cghidEventTap)
+        }
+        usleep(40_000)
+        if let original {
+            CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: original, mouseButton: .left)?.post(tap: .cghidEventTap)
+        }
+    }
+
     private func postKey(_ code: CGKeyCode, pid: pid_t) {
         guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "io.novarock.MacMenuY.Fixture" else { return }
+        let popupLayer = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let popupWindowID = WindowInfo.getOnScreenWindows().first(where: {
+            $0.ownerPID == pid && $0.layer == popupLayer && $0.frame.width > 20 && $0.frame.height > 20
+        })?.windowID
+        let stripModifiers: CGEventFlags = [.maskCommand, .maskAlternate, .maskControl, .maskShift, .maskAlphaShift]
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down) else { continue }
-            event.flags = []; event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid)); event.postToPid(pid)
+            event.flags.subtract(stripModifiers)
+            event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+            if let popupWindowID {
+                event.setIntegerValueField(CGEventField(rawValue: 0x33)!, value: Int64(popupWindowID))
+            }
+            event.postToPid(pid)
         }
     }
     private func findSearchField(_ root: NSView?) -> NSSearchField? {

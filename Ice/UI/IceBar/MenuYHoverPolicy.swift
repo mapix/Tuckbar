@@ -6,8 +6,8 @@ import CoreGraphics
 /// never an opening signal.
 struct MenuYHoverPolicy {
     enum Action: Equatable { case none, show, hide }
-    let enterDelay: TimeInterval
-    let leaveDelay: TimeInterval
+    var enterDelay: TimeInterval
+    var leaveDelay: TimeInterval
     private(set) var entryInside = false
     private(set) var showAt: TimeInterval?
     private(set) var hideAt: TimeInterval?

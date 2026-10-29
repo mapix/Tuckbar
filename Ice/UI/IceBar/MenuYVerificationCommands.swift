@@ -289,8 +289,20 @@ import Darwin
             "unreadStale": appState.activity.unreadStale.sorted(),
             "pendingRestoration": appState.itemManager.pendingRestorationWindowIDs,
             "screens": NSScreen.screens.map { ["id": $0.displayID, "frame": rectangle($0.frame), "visible": rectangle($0.visibleFrame), "menuBarHeight": $0.getMenuBarHeight() ?? NSStatusBar.system.thickness] },
-            "coverWindows": appState.menuCover.diagnostics()]
+            "coverWindows": actualOriginalBarOverlaps()]
     }
+    private func actualOriginalBarOverlaps() -> [[String:Any]] {
+        let strips=NSScreen.screens.map { screen -> CGRect in
+            let bounds=CGDisplayBounds(screen.displayID)
+            return CGRect(x:bounds.minX,y:bounds.minY,width:bounds.width,
+                          height:screen.getMenuBarHeight() ?? NSStatusBar.system.thickness)
+        }
+        return WindowInfo.getOnScreenWindows().filter { window in
+            window.ownerPID == ProcessInfo.processInfo.processIdentifier &&
+                strips.contains { $0.intersects(window.frame) }
+        }.map { ["id":$0.windowID,"frame":rectangle($0.frame),"level":$0.layer,"name":$0.title ?? ""] }
+    }
+
     private func ownShelfAXSnapshot() -> [String: Any] {
         guard let panel=appState?.menuBarManager.iceBarPanel,panel.isVisible,
               let root=panel.contentView else { return ["available":false] }

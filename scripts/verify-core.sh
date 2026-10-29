@@ -15,3 +15,8 @@ swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeInteractionPolicy.swift 
 build/tests/native-policy-tests | tee artifacts/native-policy-tests.txt
 swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeInteractionLifecycle.swift Ice/MenuBar/MenuBarItems/MenuBarStableIdentity.swift Ice/MenuBar/MenuBarItems/NativeInteractionPolicy.swift Tests/NativeLifecycleIdentityTests.swift -o build/tests/native-lifecycle-tests
 build/tests/native-lifecycle-tests | tee artifacts/native-lifecycle-tests.txt
+
+swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeReturnEvidence.swift Tests/NativeReturnEvidenceTests.swift -o build/tests/native-return-tests
+build/tests/native-return-tests | tee artifacts/native-return-tests.txt
+swiftc -parse-as-library Ice/MenuBar/MenuBarItems/NativeEventCompletion.swift Tests/NativeEventCompletionTests.swift -o build/tests/native-event-tests
+build/tests/native-event-tests | tee artifacts/native-event-tests.txt

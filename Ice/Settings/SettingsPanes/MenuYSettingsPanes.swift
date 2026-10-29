@@ -8,11 +8,50 @@ struct MenuYGeneralPane: View {
     var body: some View {
         Form {
             Section {
-                VStack(alignment:.leading,spacing:8) {
-                    Label("Tuckbar · 菜单栏，留一个入口。",systemImage:"tray.full.fill").font(.title2.weight(.semibold))
-                    Text("鼠标悬浮顶部入口，在系统菜单栏下方丝滑展开二级收纳栏。鼠标离开入口与收纳栏后自动收起；开启「整理」图钉模式时锁定面板不自动隐藏。")
-                        .foregroundStyle(.secondary)
-                }.padding(.vertical,8)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        MenuYDuskDot(size: 11)
+                        Text("Tuckbar")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(MenuYDuskPalette.ink)
+                        Spacer()
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(shelf.isEditing ? MenuYDuskPalette.apricot : MenuYDuskPalette.periwinkle)
+                                .frame(width: 6, height: 6)
+                            Text(shelf.isEditing ? "整理锁定中" : (shelf.isEnabled ? "暮色收纳就绪" : "已暂停"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(shelf.isEditing ? MenuYDuskPalette.apricot : MenuYDuskPalette.periwinkle)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(
+                            (shelf.isEditing ? MenuYDuskPalette.apricot : MenuYDuskPalette.periwinkle).opacity(0.15),
+                            in: Capsule()
+                        )
+                    }
+                    Text("菜单栏，归于暮色。")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(MenuYDuskPalette.ink)
+                    Text("鼠标悬浮顶部入口，在系统菜单栏下方展开烟熏玻璃二级抽屉。离开入口与收纳栏后自动收起；开启「整理」图钉模式时锁定面板不隐藏。")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(MenuYDuskPalette.ink2)
+                }
+                .padding(14)
+                .background(
+                    LinearGradient(
+                        colors: [MenuYDuskPalette.paper2, MenuYDuskPalette.paper],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                )
+                .padding(.vertical, 4)
+
                 Toggle("启用收纳",isOn:Binding(get:{shelf.isEnabled},set:{_ in shelf.toggleEnabled()})).disabled(shelf.isBusy)
                 LaunchAtLogin.Toggle("登录时启动 Tuckbar")
                 HStack {
@@ -87,11 +126,38 @@ struct MenuYAppearancePane: View {
                 Text("默认 90% 不透明。原生风格沿用菜单栏背景；图标多时自动换行，超出屏幕高度时可滚动。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("预览") {
-                HStack(spacing:18) {
-                    ForEach(["wifi","battery.100percent","cloud","bell.badge","clock"],id:\.self) { Image(systemName:$0).font(.system(size:prefs.iconSize*0.75)) }
-                }.frame(maxWidth:.infinity).padding(16).background(.regularMaterial,in:RoundedRectangle(cornerRadius:prefs.style == .native ? 3 : 12))
-                    .opacity(prefs.opacity)
+            Section("暮色烟熏预览") {
+                HStack(spacing: 16) {
+                    MenuYDuskDot(size: 9)
+                    ForEach(["terminal", "slider.horizontal.3", "bell.badge", "icloud", "clock"], id: \.self) { symbol in
+                        Image(systemName: symbol)
+                            .font(.system(size: prefs.iconSize * 0.72, weight: .medium))
+                            .foregroundStyle(symbol == "bell.badge" ? MenuYDuskPalette.apricot : MenuYDuskPalette.ink)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                symbol == "terminal"
+                                    ? MenuYDuskPalette.periwinkle.opacity(0.18)
+                                    : (symbol == "bell.badge" ? MenuYDuskPalette.apricot.opacity(0.16) : Color.clear),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(16)
+                .background(
+                    LinearGradient(
+                        colors: [MenuYDuskPalette.paper2, MenuYDuskPalette.paper],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    in: RoundedRectangle(cornerRadius: prefs.style == .native ? 8 : 12, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: prefs.style == .native ? 8 : 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                )
+                .opacity(prefs.opacity)
             }
             Button("恢复外观默认值") { prefs.opacity=MenuYStoredPreferences.defaultOpacity;prefs.iconSize=MenuYStoredPreferences.defaultIconSize;prefs.style = .native }
         }.formStyle(.grouped)

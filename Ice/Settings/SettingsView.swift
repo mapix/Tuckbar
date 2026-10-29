@@ -53,10 +53,13 @@ struct SettingsView: View {
                     sidebarItem(for: identifier)
                 }
             } header: {
-                Text("Tuckbar")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.vertical, 5)
+                HStack(spacing: 9) {
+                    MenuYDuskDot(size: 12)
+                    Text("Tuckbar")
+                        .font(.system(size: 25, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.vertical, 6)
             }
             .collapsible(false)
         }

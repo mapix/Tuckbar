@@ -24,9 +24,9 @@ enum MenuYBarStyle: String, CaseIterable, Codable {
     case native, glass, compact
     var label: String {
         switch self {
-        case .native: "原生菜单栏"
-        case .glass: "玻璃质感"
-        case .compact: "紧凑"
+        case .native: "暮色原生 (Dusk)"
+        case .glass: "暮色烟熏玻璃"
+        case .compact: "紧凑暮色"
         }
     }
 }

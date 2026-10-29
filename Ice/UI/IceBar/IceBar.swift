@@ -27,7 +27,7 @@ final class IceBarPanel: NSPanel {
         isFloatingPanel = true
         becomesKeyOnlyIfNeeded = true
         animationBehavior = .none
-        backgroundColor = NSColor(calibratedWhite:0.08,alpha:1)
+        backgroundColor = NSColor(calibratedRed: 0.086, green: 0.094, blue: 0.133, alpha: 1)
         isOpaque = true
         hasShadow = true
         level = .popUpMenu

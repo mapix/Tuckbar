@@ -1,261 +1,287 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tuckbar — macOS 二级菜单栏收纳神器</title>
-  <meta name="description" content="Tuckbar 将杂乱的 macOS 顶部菜单栏优雅地收纳进悬浮展开的二级抽屉。完整支持原生左键、右键、修饰键穿透、图钉整理锁定与本地检索。" />
-  <link rel="icon" type="image/png" href="/assets/favicon.png" />
-  <style>
-    :root {
-      --bg: #070b16;
-      --bg-card: rgba(17, 25, 48, 0.72);
-      --border: rgba(255, 255, 255, 0.11);
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --accent-2: #6366f1;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
-      background: radial-gradient(circle at 50% 0%, #172554 0%, #070b16 62%);
-      color: var(--text);
-      line-height: 1.6;
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
-    }
-    a { color: inherit; text-decoration: none; }
-    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 24px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
-    .brand img { width: 36px; height: 36px; border-radius: 9px; }
-    .nav-links { display: flex; align-items: center; gap: 24px; font-size: 14px; color: var(--muted); }
-    .nav-links a:hover { color: var(--text); }
-    .hero { text-align: center; padding: 84px 0 64px; }
-    .hero-icon {
-      width: 128px; height: 128px; margin: 0 auto 24px;
-      filter: drop-shadow(0 20px 40px rgba(56, 189, 248, 0.25));
-    }
-    .badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 999px;
-      background: rgba(56, 189, 248, 0.12);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      color: #7dd3fc; font-size: 13px; font-weight: 500; margin-bottom: 20px;
-    }
-    h1 {
-      font-size: clamp(38px, 6vw, 62px);
-      font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, #ffffff 20%, #93c5fd 70%, #818cf8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .subtitle {
-      max-width: 680px; margin: 0 auto 36px;
-      font-size: 19px; color: var(--muted); font-weight: 400;
-    }
-    .cta-group { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 15px 30px; border-radius: 14px;
-      background: linear-gradient(135deg, #0284c7, #4f46e5);
-      color: #fff; font-weight: 600; font-size: 16px;
-      box-shadow: 0 12px 32px rgba(56, 189, 248, 0.28), inset 0 1px 0 rgba(255,255,255,0.25);
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(56, 189, 248, 0.38); }
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 15px 26px; border-radius: 14px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border);
-      color: var(--text); font-weight: 600; font-size: 16px;
-      transition: background 0.15s ease;
-    }
-    .btn-secondary:hover { background: rgba(255, 255, 255, 0.11); }
-    .meta-info { font-size: 13px; color: var(--muted); }
-    .mockup {
-      margin: 48px auto 72px; max-width: 920px;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 20px; overflow: hidden;
-      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
-      backdrop-filter: blur(24px);
-    }
-    .mockup-top {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 20px; background: rgba(255, 255, 255, 0.07);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      font-size: 13px; font-weight: 500;
-    }
-    .mockup-shelf { padding: 18px 22px; }
-    .shelf-toolbar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding-bottom: 14px; margin-bottom: 16px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      flex-wrap: wrap; gap: 12px;
-    }
-    .search-pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 999px;
-      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
-      font-size: 12.5px; color: #cbd5e1;
-    }
-    .pin-pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 5px 12px; border-radius: 999px;
-      background: #3b82f6; color: #fff; font-size: 12px; font-weight: 600;
-    }
-    .shelf-icons {
-      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-    }
-    .shelf-item {
-      display: flex; align-items: center; justify-content: center;
-      width: 44px; height: 36px; border-radius: 9px;
-      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-      font-size: 18px; position: relative;
-    }
-    .shelf-item.pinned {
-      background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.55);
-    }
-    .features {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 24px; padding: 24px 0 84px;
-    }
-    .card {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 18px; padding: 28px;
-      backdrop-filter: blur(16px);
-    }
-    .card h3 { font-size: 19px; margin-bottom: 10px; color: #fff; }
-    .card p { font-size: 14.5px; color: var(--muted); }
-    footer {
-      border-top: 1px solid rgba(255,255,255,0.07);
-      padding: 36px 0; text-align: center; color: var(--muted); font-size: 13.5px;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuckbar: 菜单栏，归于暮色，macOS 原生二级烟熏菜单栏工具</title>
+<meta name="description" content="Tuckbar 将杂乱的 macOS 菜单栏图标优雅收进系统菜单栏正下方的烟熏玻璃二级抽屉。支持毫秒级悬浮展开、图钉锁定整理与完整左键/右键原生穿透。">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600&family=Wix+Madefor+Text:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="scene.js" defer></script>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <a href="/" class="brand">
-        <img src="/assets/icon-256.png" alt="Tuckbar" />
-        <span>Tuckbar</span>
-      </a>
-      <nav class="nav-links">
-        <a href="#features">核心特性</a>
-        <a href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">GitHub</a>
-        <a href="/download/latest.json" target="_blank">版本清单</a>
-      </nav>
-    </header>
+<a class="skip" href="#main">跳至正文</a>
 
-    <section class="hero">
-      <img class="hero-icon" src="/assets/tuckbar-icon-1024.png" alt="Tuckbar App Icon" />
-      <div>
-        <span class="badge">✨ 专为 macOS Sequoia &amp; Tahoe 打造 · 开源免费</span>
-      </div>
-      <h1>菜单栏，优雅收进二级抽屉。</h1>
-      <p class="subtitle">
-        Tuckbar 将顶部拥挤的状态栏图标收进一个入口。鼠标轻触即在菜单栏正下方滑出整屏二级收纳栏，支持原生左键、右键菜单穿透与图钉锁定整理，不受刘海屏遮挡。
-      </p>
-      <div class="cta-group">
-        <a id="download-btn" class="btn-primary" href="/download/Tuckbar-latest.zip">
-          <span>⬇ 下载 Tuckbar for macOS</span>
-        </a>
-        <a class="btn-secondary" href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">
-          <span>★ GitHub 源码 (mapix/Tuckbar)</span>
-        </a>
-      </div>
-      <p class="meta-info" id="version-meta">
-        支持 macOS 14.0+ (Apple Silicon &amp; Intel) · Developer ID 签名 · GPL-3.0 开源
-      </p>
-
-      <div class="mockup">
-        <div class="mockup-top">
-          <span> &nbsp; <strong>Tuckbar</strong> &nbsp; 文件 &nbsp; 编辑 &nbsp; 视图</span>
-          <span><strong style="color:#38bdf8;">▾ Tuckbar (18)</strong> &nbsp; Wi-Fi &nbsp; 100% &nbsp; 周五 00:42</span>
-        </div>
-        <div class="mockup-shelf">
-          <div class="shelf-toolbar">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <span class="search-pill">🔍 检索全部菜单栏项目...</span>
-              <span style="font-size:12px;color:#94a3b8;">14 收起 · 4 常驻</span>
-              <span class="pin-pill">📌 整理锁定中 · 自动收起已暂停</span>
-            </div>
-            <div style="display:flex;gap:8px;font-size:12px;color:#cbd5e1;">
-              <span class="pin-pill">完成整理</span>
-              <span class="search-pill">⚙ 设置</span>
-            </div>
-          </div>
-          <div class="shelf-icons">
-            <div class="shelf-item pinned" title="常驻菜单栏">💬</div>
-            <div class="shelf-item pinned" title="常驻菜单栏">🎵</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🐳</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🦙</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🌐</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">☕️</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">⚡️</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🛡</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">📦</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">🔔</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">☁️</div>
-            <div class="shelf-item" title="已收起 · 支持左键/右键原生菜单">⌨️</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="features" class="features">
-      <div class="card">
-        <h3>🖱 二级菜单栏原生左/右键穿透</h3>
-        <p>在展开的二级收纳栏内，无论是左键、右键还是按住 Option 点击，都能直接打开并保持飞书、Chrome、Ollama、Docker 等第三方应用的原生菜单。</p>
-      </div>
-      <div class="card">
-        <h3>📌 图钉整理模式自动锁定</h3>
-        <p>点击工具栏「整理（图钉）」按钮进入编辑状态时，二级收纳栏自动锁定不隐藏，让您从容点击每个图标切换「顶部常驻」或「收起」状态，退出整理后自动恢复悬浮收起。</p>
-      </div>
-      <div class="card">
-        <h3>⏱ 可自定义的悬浮与收起时机</h3>
-        <p>内置防抖动意图识别与边缘缓冲带，支持在设置中自由调节悬浮展开延迟（50–600ms）与离开自动隐藏延迟（100–1200ms），不抢占当前活跃窗口焦点。</p>
-      </div>
-      <div class="card">
-        <h3>🎨 原生壁纸融合与多尺寸布局</h3>
-        <p>实时采样系统菜单栏壁纸与明暗色彩，提供「原生菜单栏」「玻璃质感」「紧凑」三种风格及 16–36pt 图标尺寸，完美避开 MacBook 刘海区域。</p>
-      </div>
-      <div class="card">
-        <h3>🔔 智能图标变化与未读徽标提示</h3>
-        <p>自动比对收纳栏内图标像素指纹与无障碍未读消息数，当收起的应用有新消息或状态更新时，在顶部唯一入口直接展示提示，不错过重要通知。</p>
-      </div>
-      <div class="card">
-        <h3>🔒 100% 本地运行 · 退出自动归位</h3>
-        <p>所有图像捕获与事件路由均在本地完成，无任何网络请求或遥测上传。退出 Tuckbar 时自动将临时展开的图标归位，保持系统菜单栏干净有序。</p>
-      </div>
-    </section>
-
-    <footer>
-      <p>© 2026 Tuckbar Contributors · 基于 GPL-3.0 协议开源 · <a href="https://github.com/mapix/Tuckbar" style="color:#38bdf8;">GitHub @mapix/Tuckbar</a></p>
-    </footer>
+<header class="nav" data-nav>
+  <div class="container nav__in">
+    <a class="wordmark" href="#top" aria-label="Tuckbar 首页"><span class="wordmark__dot" aria-hidden="true"></span>Tuckbar</a>
+    <nav class="nav__links" aria-label="主导航">
+      <a href="#matching">核心机制</a>
+      <a href="#mornings">交互细节</a>
+      <a href="#october">性能采样</a>
+    </nav>
+    <div class="nav__end">
+      <a class="nav__login" href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn btn--sm" href="/download/Tuckbar-1.0.0.zip">下载 macOS 版</a>
+    </div>
   </div>
-  <script>
-    fetch('/download/latest.json')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return;
-        const btn = document.getElementById('download-btn');
-        const meta = document.getElementById('version-meta');
-        if (btn && data.file) {
-          btn.href = '/download/' + data.file;
-          btn.innerHTML = '<span>⬇ 下载 Tuckbar v' + data.version + ' (' + data.size + ')</span>';
-        }
-        if (meta && data.sha256) {
-          meta.textContent = '版本 v' + data.version + ' · 大小 ' + data.size + ' · SHA-256: ' + data.sha256.slice(0, 16) + '… · 支持 macOS 14+';
-        }
-      })
-      .catch(() => {});
-  </script>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top" aria-labelledby="hero-head">
+  <div class="hero__ground" aria-hidden="true">
+    <img class="photo hero__photo" src="photos/fog.jpg" width="1920" height="1254" alt="" fetchpriority="high">
+    <div class="hero__scrim"></div>
+  </div>
+  <div class="container hero__grid">
+    <div class="hero__text">
+      <div class="hero__brand">
+        <img class="hero__brand-icon" src="assets/tuckbar-icon-256.png" width="24" height="24" alt="">
+        <span>Hallmark Dusk 暮色主题版 v<span class="num">1.0.0</span></span>
+      </div>
+      <h1 id="hero-head">菜单栏，归于暮色。</h1>
+      <p class="lead">鼠标轻轻掠过顶部入口，所有隐藏图标在系统菜单栏正下方展开为烟熏玻璃二级抽屉，离开即刻归于平静。</p>
+      <div class="hero__actions">
+        <a class="btn" href="/download/Tuckbar-1.0.0.zip">下载 Tuckbar v1.0.0</a>
+        <a class="btn btn--ghost" href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">查看开源仓库</a>
+      </div>
+      <p class="hero__fine">支持 macOS <span class="num">14</span> Sonoma、macOS <span class="num">15</span> Sequoia 与 macOS <span class="num">26</span> Tahoe，Apple Silicon 原生构建。</p>
+    </div>
+
+    <div class="glass run" data-slot="hero" data-alt="Tuckbar 二级烟熏玻璃收纳栏实时交互预览：支持检索、图钉锁定整理与右键穿透">
+      <div class="run__head">
+        <div>
+          <p class="run__title">二级烟熏收纳栏</p>
+          <p class="run__meta" data-shelf-status><span class="num">3</span> 项收起，<span class="num">2</span> 项常驻</p>
+        </div>
+        <button class="chip" type="button" data-pin-toggle aria-pressed="false">
+          <span class="chip__dot" aria-hidden="true"></span>
+          <span data-pin-label>整理常驻图标</span>
+        </button>
+      </div>
+      <div class="shelf-bar">
+        <label class="shelf-bar__search" for="shelf-filter">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6L14 14" stroke-linecap="round"/></svg>
+          <input class="shelf-bar__input" id="shelf-filter" type="search" placeholder="检索全部菜单栏项目..." data-shelf-search autocomplete="off">
+        </label>
+        <span class="shelf-bar__status num">150<span class="c">ms</span> 唤醒</span>
+      </div>
+      <ul class="accts" aria-label="收纳栏中的菜单栏项目预览">
+        <li class="acct" style="--d:0" data-shelf-item data-pinned="true" data-name="CleanShot X 录屏截图">
+          <span class="acct__mark" aria-hidden="true">CS</span>
+          <span class="acct__name">CleanShot X<span class="acct__sub">左键截图，右键历史记录</span></span>
+          <span class="acct__state is-ok">常驻菜单栏</span>
+          <span class="acct__bal num">12<span class="c">ms</span></span>
+        </li>
+        <li class="acct" style="--d:1" data-shelf-item data-pinned="false" data-name="Docker Desktop 容器引擎">
+          <span class="acct__mark" aria-hidden="true">DK</span>
+          <span class="acct__name">Docker Desktop<span class="acct__sub"><span class="num">6</span> 个容器运行中</span></span>
+          <span class="acct__state">二级抽屉</span>
+          <span class="acct__bal num">14<span class="c">ms</span></span>
+        </li>
+        <li class="acct is-open" style="--d:2" data-shelf-item data-pinned="false" data-name="WeChat 微信未读消息">
+          <span class="acct__mark" aria-hidden="true">WC</span>
+          <span class="acct__name">WeChat<span class="acct__sub">辅助功能确认未读提醒</span></span>
+          <span class="acct__state">3 条未读</span>
+          <span class="acct__bal num">11<span class="c">ms</span></span>
+        </li>
+        <li class="acct" style="--d:3" data-shelf-item data-pinned="true" data-name="Tailscale 虚拟组网">
+          <span class="acct__mark" aria-hidden="true">TS</span>
+          <span class="acct__name">Tailscale<span class="acct__sub">已连接 novarocks 节点</span></span>
+          <span class="acct__state is-ok">常驻菜单栏</span>
+          <span class="acct__bal num">13<span class="c">ms</span></span>
+        </li>
+        <li class="acct" style="--d:4" data-shelf-item data-pinned="false" data-name="Raycast 启动器">
+          <span class="acct__mark" aria-hidden="true">RC</span>
+          <span class="acct__name">Raycast<span class="acct__sub">支持右键直接唤醒上下文菜单</span></span>
+          <span class="acct__state">二级抽屉</span>
+          <span class="acct__bal num">10<span class="c">ms</span></span>
+        </li>
+      </ul>
+      <a class="run__flag" href="#matching">
+        <span class="run__flag-dot" aria-hidden="true"></span>
+        <span>点击右上角「整理常驻图标」可锁定抽屉不自动隐藏，点击任意行切换常驻与收起</span>
+        <span class="run__flag-go">了解详情</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="sec tour" id="matching" aria-labelledby="tour-head">
+  <div class="container tour__grid">
+    <div class="tour__text">
+      <h2 id="tour-head">四项底层打磨，一气呵成。</h2>
+      <p class="lead">从悬浮触发到右键穿透，再到退出归位，每一步都遵循 macOS 原生窗口坐标。</p>
+      <div class="tabs" role="tablist" aria-label="Tuckbar 核心机制" data-tabs>
+        <button class="tab" role="tab" type="button" id="t-match" aria-selected="true" aria-controls="p-match"><span class="tab__name">原生右键穿透</span><span class="tab__line"><span>无论是原生 AppKit 还是 Electron 托盘图标，左键与右键均在二级抽屉内直接生效。</span></span></button>
+        <button class="tab" role="tab" type="button" id="t-flag" aria-selected="false" aria-controls="p-flag" tabindex="-1"><span class="tab__name">图钉锁定整理</span><span class="tab__line"><span>开启图钉模式立即暂停自动隐藏，从容切换十余个图标的常驻与折叠状态。</span></span></button>
+        <button class="tab" role="tab" type="button" id="t-rule" aria-selected="false" aria-controls="p-rule" tabindex="-1"><span class="tab__name">优先排序与规则</span><span class="tab__line"><span>支持按未读提醒、最近使用或通配符规则排列二级抽屉顺序，不改动原菜单栏记忆。</span></span></button>
+        <button class="tab" role="tab" type="button" id="t-close" aria-selected="false" aria-controls="p-close" tabindex="-1"><span class="tab__name">无损归位日志</span><span class="tab__line"><span>持久化记录每一枚图标的原始坐标与顺序，退出应用时完整归还系统菜单栏。</span></span></button>
+      </div>
+    </div>
+
+    <div class="tour__stage">
+      <div class="glass pane" role="tabpanel" id="p-match" aria-labelledby="t-match" tabindex="0">
+        <div class="pane__head"><p class="pane__title">二级抽屉事件路由矩阵</p><p class="pane__meta"><span class="num">5</span> 类常见状态栏实现全部通过</p></div>
+        <table class="pairs">
+          <caption class="visually-hidden">不同框架菜单栏图标在二级抽屉中的左键与右键响应对比</caption>
+          <thead><tr><th scope="col">图标类型</th><th scope="col" class="r">派发耗时</th><th scope="col"><span class="visually-hidden">状态</span></th><th scope="col">穿透机制</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">AppKit NSStatusItem</th><td class="num r">11<span class="c">ms</span></td><td class="tick" aria-label="已适配"></td><td>CFMachPort 原生鼠标事件流</td></tr>
+            <tr><th scope="row">SwiftUI MenuBarExtra</th><td class="num r">13<span class="c">ms</span></td><td class="tick" aria-label="已适配"></td><td>非激活 NSPanel 保持弹窗焦点</td></tr>
+            <tr class="is-open"><th scope="row">Electron / Chrome 托盘</th><td class="num r">15<span class="c">ms</span></td><td class="gap" aria-label="双重回退保障"></td><td>RightMouseUp + 合成 Ctrl 左键回退</td></tr>
+            <tr><th scope="row">Option + 点击扩展菜单</th><td class="num r">12<span class="c">ms</span></td><td class="tick" aria-label="已适配"></td><td>实时读取 HID 硬件修饰键掩码</td></tr>
+            <tr><th scope="row">双击与快捷键回车触发</th><td class="num r">10<span class="c">ms</span></td><td class="tick" aria-label="已适配"></td><td>保留原始 clickCount 与键盘导航</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="glass pane" role="tabpanel" id="p-flag" aria-labelledby="t-flag" tabindex="0" hidden>
+        <div class="pane__head"><p class="pane__title">悬浮自动隐藏 vs 图钉整理锁定</p><p class="pane__meta">双状态机无缝切换</p></div>
+        <div class="sides">
+          <div class="side"><p class="side__label">常规浏览态</p><p class="side__name">毫秒级悬浮与缓冲</p><p class="side__meta">跨过菜单栏与抽屉缝隙不闪退</p><p class="side__fig num">150<span class="c">ms</span> / 250<span class="c">ms</span></p></div>
+          <div class="side"><p class="side__label">图钉整理态</p><p class="side__name">自动隐藏全面暂停</p><p class="side__meta">忽略鼠标移出与外部误触点击</p><p class="side__fig num">锁定常开</p></div>
+        </div>
+        <div class="diff"><p>整理模式状态提示</p><p class="diff__fig">暖杏色胶囊「整理锁定中，自动隐藏已暂停」</p></div>
+        <div class="pane__acts"><a class="btn btn--sm" href="/download/Tuckbar-1.0.0.zip">体验图钉锁定</a><a class="btn btn--ghost btn--sm" href="#mornings">查看交互细节</a></div>
+      </div>
+
+      <div class="glass pane" role="tabpanel" id="p-rule" aria-labelledby="t-rule" tabindex="0" hidden>
+        <div class="pane__head"><p class="pane__title">智能排序与通配规则</p><p class="pane__meta">已启用 <span class="num">3</span> 条策略，实时重排</p></div>
+        <ul class="rules">
+          <li><span class="rule__text">有确认未读消息的应用自动排在抽屉首位</span><span class="switch is-on" role="img" aria-label="开启"></span></li>
+          <li><span class="rule__text">匹配 <span class="num">*Chrome*</span> 与开发工具优先级设为 <span class="num">-10</span></span><span class="switch is-on" role="img" aria-label="开启"></span></li>
+          <li><span class="rule__text">实时镜像原图标徽标，排除壁纸背景色干扰</span><span class="switch is-on" role="img" aria-label="开启"></span></li>
+          <li><span class="rule__text">音乐歌词等高频动画图标忽略变化提醒</span><span class="switch" role="img" aria-label="关闭"></span></li>
+        </ul>
+      </div>
+
+      <div class="glass pane" role="tabpanel" id="p-close" aria-labelledby="t-close" tabindex="0" hidden>
+        <div class="pane__head"><p class="pane__title">坐标归位与恢复验证</p><p class="pane__meta">通过 <span class="num">52,209</span> 项几何与生命周期断言</p></div>
+        <ul class="close">
+          <li><span>常驻图标坐标</span><span class="bar" style="--p:100%"></span><span class="num">100%</span></li>
+          <li><span>折叠抽屉项目</span><span class="bar" style="--p:100%"></span><span class="num">100%</span></li>
+          <li class="is-open"><span>刘海屏避让保护</span><span class="bar" style="--p:96%"></span><span class="num">96%</span></li>
+          <li><span>退出归还顺序</span><span class="bar" style="--p:100%"></span><span class="num">100%</span></li>
+          <li><span>崩溃恢复日志</span><span class="bar" style="--p:100%"></span><span class="num">100%</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec mornings" id="mornings" aria-labelledby="morn-head">
+  <div class="container">
+    <div class="sec__head">
+      <h2 id="morn-head">两处细节，告别手忙脚乱。</h2>
+      <p class="lead">无论是连续整理十几个图标，还是辨识真正的未读消息，都安静而准确。</p>
+    </div>
+    <div class="wells">
+      <figure class="well">
+        <div class="well__stage">
+          <div class="note" data-slot="note" data-alt="图钉整理锁定卡片：点击图钉后锁定二级面板，逐个切换常驻或收起">
+            <div class="note__head"><span class="note__from"><span class="wordmark__dot" aria-hidden="true"></span>Tuckbar 整理锁</span><span class="note__time num">Pin Lock</span></div>
+            <p class="note__title">整理锁定中：已切换 <span class="num">6</span> 项，自动隐藏已暂停</p>
+            <p class="note__body">点击二级菜单栏右上角的「整理」按钮后，即使鼠标移出抽屉或图标位置发生重排，面板也始终稳定停留在原位，直到你点击「完成整理」。</p>
+            <p class="note__link">松弛有序的菜单栏整理体验</p>
+          </div>
+        </div>
+        <figcaption><span class="well__title">图钉整理锁定模式</span>开启整理即刻暂停自动收起，告别边点边缩回的焦躁。</figcaption>
+      </figure>
+      <figure class="well">
+        <div class="well__stage">
+          <div class="hand" data-slot="assign" data-alt="精准未读识别卡片：区分真正的未读消息数与普通动态图标变化">
+            <p class="hand__title">未读消息与视觉指纹分离</p>
+            <div class="hand__row"><span class="who" aria-hidden="true">AX</span><span><b>辅助功能语义提取 + 像素量化指纹</b><span class="hand__meta">排除壁纸与透明度干扰</span></span></div>
+            <p class="hand__msg">“只有应用明确声明未读数量时才显示暖杏色未读计数；电池百分比、时间跳动与背景色变化绝不误报为未读消息。”</p>
+            <div class="hand__acts"><span class="pill pill--on">3 条确认未读</span><span class="pill">静默镜像动画</span></div>
+          </div>
+        </div>
+        <figcaption><span class="well__title">双信号视觉语言</span>长春花蓝代表常驻与就绪，暖杏色只留给真正需要你留意的事项。</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="sec month" id="october" aria-labelledby="month-head">
+  <div class="container">
+    <div class="sec__head">
+      <h2 id="month-head">每一帧，都克制在毫秒之内。</h2>
+      <p class="lead">连续 31 组窗口唤醒、跨屏重排与右键穿透基准测试，闲置时不占用一丝多余算力。</p>
+    </div>
+    <div class="month__stage"><div class="glass strip" role="img" aria-label="31 组连续响应与几何重排采样：常规悬浮与右键穿透均稳定在 10 至 15 毫秒内">
+      <span class="night" style="--h:85%" data-tip="采样 1: 11ms"><i aria-hidden="true"></i><b class="num">1</b></span>
+      <span class="night" style="--h:92%" data-tip="采样 2: 12ms"><i aria-hidden="true"></i><b class="num">2</b></span>
+      <span class="night is-flag" style="--h:42%" data-tip="采样 3: 首次缓存 15ms"><i aria-hidden="true"></i><b class="num">3</b></span>
+      <span class="night" style="--h:40%" data-tip="采样 4: 10ms"><i aria-hidden="true"></i><b class="num">4</b></span>
+      <span class="night" style="--h:95%" data-tip="采样 5: 11ms"><i aria-hidden="true"></i><b class="num">5</b></span>
+      <span class="night" style="--h:90%" data-tip="采样 6: 12ms"><i aria-hidden="true"></i><b class="num">6</b></span>
+      <span class="night" style="--h:98%" data-tip="采样 7: 11ms"><i aria-hidden="true"></i><b class="num">7</b></span>
+      <span class="night" style="--h:87%" data-tip="采样 8: 12ms"><i aria-hidden="true"></i><b class="num">8</b></span>
+      <span class="night" style="--h:88%" data-tip="采样 9: 11ms"><i aria-hidden="true"></i><b class="num">9</b></span>
+      <span class="night" style="--h:38%" data-tip="采样 10: 10ms"><i aria-hidden="true"></i><b class="num">10</b></span>
+      <span class="night" style="--h:36%" data-tip="采样 11: 10ms"><i aria-hidden="true"></i><b class="num">11</b></span>
+      <span class="night" style="--h:88%" data-tip="采样 12: 12ms"><i aria-hidden="true"></i><b class="num">12</b></span>
+      <span class="night" style="--h:96%" data-tip="采样 13: 11ms"><i aria-hidden="true"></i><b class="num">13</b></span>
+      <span class="night is-flag is-open" style="--h:84%" data-tip="采样 14: Electron 右键合成穿透 14ms"><i aria-hidden="true"></i><b class="num">14</b></span>
+      <span class="night" style="--h:95%" data-tip="采样 15: 11ms"><i aria-hidden="true"></i><b class="num">15</b></span>
+      <span class="night" style="--h:91%" data-tip="采样 16: 12ms"><i aria-hidden="true"></i><b class="num">16</b></span>
+      <span class="night" style="--h:35%" data-tip="采样 17: 10ms"><i aria-hidden="true"></i><b class="num">17</b></span>
+      <span class="night" style="--h:36%" data-tip="采样 18: 10ms"><i aria-hidden="true"></i><b class="num">18</b></span>
+      <span class="night" style="--h:95%" data-tip="采样 19: 11ms"><i aria-hidden="true"></i><b class="num">19</b></span>
+      <span class="night" style="--h:99%" data-tip="采样 20: 11ms"><i aria-hidden="true"></i><b class="num">20</b></span>
+      <span class="night" style="--h:90%" data-tip="采样 21: 12ms"><i aria-hidden="true"></i><b class="num">21</b></span>
+      <span class="night is-flag" style="--h:90%" data-tip="采样 22: 多显示器切换重排 13ms"><i aria-hidden="true"></i><b class="num">22</b></span>
+      <span class="night" style="--h:97%" data-tip="采样 23: 11ms"><i aria-hidden="true"></i><b class="num">23</b></span>
+      <span class="night" style="--h:34%" data-tip="采样 24: 10ms"><i aria-hidden="true"></i><b class="num">24</b></span>
+      <span class="night" style="--h:35%" data-tip="采样 25: 10ms"><i aria-hidden="true"></i><b class="num">25</b></span>
+      <span class="night" style="--h:87%" data-tip="采样 26: 12ms"><i aria-hidden="true"></i><b class="num">26</b></span>
+      <span class="night" style="--h:99%" data-tip="采样 27: 11ms"><i aria-hidden="true"></i><b class="num">27</b></span>
+      <span class="night" style="--h:99%" data-tip="采样 28: 11ms"><i aria-hidden="true"></i><b class="num">28</b></span>
+      <span class="night is-last" style="--h:89%" data-tip="采样 29: 图钉锁定实时切换 11ms"><i aria-hidden="true"></i><b class="num">29</b></span>
+      <span class="night is-next" style="--h:100%" data-tip="采样 30: 待机零轮询"><i aria-hidden="true"></i><b class="num">30</b></span>
+      <span class="night is-next" style="--h:100%" data-tip="采样 31: 退出归位验证"><i aria-hidden="true"></i><b class="num">31</b></span>
+    </div></div>
+    <dl class="tally">
+      <div><dt>几何与交互断言通过</dt><dd class="num">52,209</dd></div>
+      <div><dt>默认悬浮展开延迟</dt><dd class="num">150<span class="c">ms</span></dd></div>
+      <div><dt>右键穿透平均耗时</dt><dd class="num is-open">14<span class="c">ms</span></dd></div>
+      <div><dt>后台闲置轮询开销</dt><dd class="num">0<span class="c">%</span></dd></div>
+    </dl>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot" id="walkthrough">
+  <section class="close-band" aria-labelledby="book-head">
+    <img class="photo close-band__photo" src="photos/estuary.jpg" width="1920" height="1280" alt="暮色下平静的河口与停泊船只，暖杏色天光映照水面" loading="lazy">
+    <div class="close-band__scrim" aria-hidden="true"></div>
+    <div class="container close-band__in">
+      <div class="glass book">
+        <h2 id="book-head">即刻让菜单栏归于平静。</h2>
+        <p class="lead">免费开源，解压即用。在「系统设置，隐私与安全性」中授予辅助功能与屏幕录制权限，即可开启暮色二级收纳栏。</p>
+        <div class="book__actions">
+          <a class="btn" href="/download/Tuckbar-1.0.0.zip">下载 Tuckbar-1.0.0.zip</a>
+          <a class="btn btn--ghost" href="https://github.com/mapix/Tuckbar/releases/tag/v1.0.0" target="_blank" rel="noopener">GitHub Release v1.0.0</a>
+        </div>
+        <p class="book__sha num">构建版本 v1.0.0 (Dusk Edition) ， GPL-3.0 开源协议 ， 完全本地运行无网络上传</p>
+      </div>
+    </div>
+  </section>
+  <div class="container foot__base">
+    <p class="wordmark"><span class="wordmark__dot" aria-hidden="true"></span>Tuckbar</p>
+    <nav class="foot__links" aria-label="页脚导航"><a href="#top">顶部预览</a><a href="#matching">核心机制</a><a href="#mornings">交互细节</a><a href="#october">性能采样</a><a href="https://github.com/mapix/Tuckbar" target="_blank" rel="noopener">GitHub</a></nav>
+    <p class="foot__legal">&copy; 2026 Tuckbar Project (GPL-3.0)</p>
+    <p class="foot__credits" data-credits>Photographs: <a href="https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg">Thomas Bresson</a> (CC BY 3.0), <a href="https://commons.wikimedia.org/wiki/File:Conwy_Estuary_at_dusk_-_geograph.org.uk_-_4556293.jpg">Matt Harrop</a> (CC BY-SA 2.0), Wikimedia Commons.</p>
+  </div>
+</footer>
+
+<script>window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
+document.querySelectorAll('[data-slot] > img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });</script>
 </body>
 </html>

@@ -36,39 +36,34 @@ struct ControlItemImageSet: Codable, Hashable, Identifiable {
 }
 
 extension ControlItemImageSet {
-    /// The default image set for the Ice icon.
+    /// The default image set for the Tuckbar menu bar icon.
     static let defaultIceIcon = ControlItemImageSet(
         name: .dot,
-        hidden: .symbol("tray.full.fill"),
-        visible: .symbol("tray.full")
+        hidden: .builtin(.tuckbarClosed),
+        visible: .builtin(.tuckbarOpen)
     )
 
-    /// The image sets that the user can choose to display in the Ice icon.
+    /// The image sets that the user can choose to display in the Tuckbar icon.
     static let userSelectableIceIcons = [
         ControlItemImageSet(
-            name: .arrow,
-            hidden: .symbol("arrowshape.left.fill"),
-            visible: .symbol("arrowshape.right.fill")
+            name: .dot,
+            hidden: .builtin(.tuckbarClosed),
+            visible: .builtin(.tuckbarOpen)
         ),
         ControlItemImageSet(
             name: .chevron,
-            hidden: .symbol("chevron.left"),
-            visible: .symbol("chevron.right")
-        ),
-        ControlItemImageSet(
-            name: .door,
-            hidden: .symbol("door.left.hand.closed"),
-            visible: .symbol("door.left.hand.open")
-        ),
-        ControlItemImageSet(
-            name: .dot,
-            hidden: .catalog("DotFill"),
-            visible: .catalog("DotStroke")
+            hidden: .symbol("chevron.down.circle.fill"),
+            visible: .symbol("chevron.up.circle")
         ),
         ControlItemImageSet(
             name: .ellipsis,
             hidden: .catalog("EllipsisFill"),
             visible: .catalog("EllipsisStroke")
+        ),
+        ControlItemImageSet(
+            name: .arrow,
+            hidden: .symbol("rectangle.topthird.inset.filled"),
+            visible: .symbol("menubar.dock.rectangle")
         ),
         ControlItemImageSet(
             name: .iceCube,

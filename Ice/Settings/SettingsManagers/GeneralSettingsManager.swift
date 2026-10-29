@@ -104,7 +104,12 @@ final class GeneralSettingsManager: ObservableObject {
 
         if let data = Defaults.data(forKey: .iceIcon) {
             do {
-                iceIcon = try decoder.decode(ControlItemImageSet.self, from: data)
+                let decoded = try decoder.decode(ControlItemImageSet.self, from: data)
+                if decoded.hidden == .symbol("tray.full.fill") || decoded.hidden == .catalog("DotFill") {
+                    iceIcon = .defaultIceIcon
+                } else {
+                    iceIcon = decoded
+                }
             } catch {
                 Logger.generalSettingsManager.error("Error decoding Ice icon: \(error)")
             }

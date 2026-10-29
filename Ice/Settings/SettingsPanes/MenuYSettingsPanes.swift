@@ -111,10 +111,36 @@ struct MenuYGeneralPane: View {
     }
 }
 struct MenuYAppearancePane: View {
+    @EnvironmentObject var appState: AppState
     @EnvironmentObject var prefs: MenuYPreferences
+    private func iconLabel(_ name: ControlItemImageSet.Name) -> String {
+        switch name {
+        case .dot: "Tuckbar 双层徽标"
+        case .chevron: "暮色圆形折叠箭头"
+        case .ellipsis: "三点胶囊"
+        case .arrow: "顶栏内嵌图标"
+        case .iceCube: "几何方糖"
+        case .sunglasses: "墨镜"
+        case .door, .custom: name.rawValue
+        }
+    }
     var body: some View {
         Form {
-            Section("收纳栏样式") {
+            Section("菜单栏入口与收纳栏样式") {
+                Picker("顶部菜单栏图标", selection: Binding(
+                    get: { appState.settingsManager.generalSettingsManager.iceIcon },
+                    set: { appState.settingsManager.generalSettingsManager.iceIcon = $0 }
+                )) {
+                    ForEach(ControlItemImageSet.userSelectableIceIcons) { iconSet in
+                        HStack(spacing: 8) {
+                            if let nsImage = iconSet.hidden.nsImage(for: appState) {
+                                Image(nsImage: nsImage)
+                            }
+                            Text(iconLabel(iconSet.name))
+                        }
+                        .tag(iconSet)
+                    }
+                }
                 Picker("风格",selection:$prefs.style) { ForEach(MenuYBarStyle.allCases,id:\.self) { Text($0.label).tag($0) } }
                 Picker("图标大小",selection:$prefs.iconSize) {
                     ForEach(Array(Set([16,18,20,24,28,32,36,Int(prefs.iconSize)])).sorted(),id:\.self) { Text("\($0) pt").tag(Double($0)) }

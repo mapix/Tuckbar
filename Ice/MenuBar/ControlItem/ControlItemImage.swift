@@ -24,6 +24,8 @@ enum ControlItemImage: Codable, Hashable {
             return switch name {
             case .chevronLarge: StaticBuiltins.Chevron.large
             case .chevronSmall: StaticBuiltins.Chevron.small
+            case .tuckbarClosed: StaticBuiltins.Tuckbar.closed
+            case .tuckbarOpen: StaticBuiltins.Tuckbar.open
             }
         case .symbol(let name):
             let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
@@ -54,6 +56,10 @@ extension ControlItemImage {
         case chevronLarge
         /// A small chevron.
         case chevronSmall
+        /// Tuckbar signature two-layer mark (collapsed).
+        case tuckbarClosed
+        /// Tuckbar signature two-layer mark (expanded).
+        case tuckbarOpen
     }
 }
 
@@ -63,6 +69,46 @@ extension ControlItemImage {
     /// - Note: We use the static properties `large` and `small` to avoid repeatedly
     ///   executing code every time ``nsImage(for:)`` is called.
     private enum StaticBuiltins {
+        /// Tuckbar signature menu bar icon: a sleek top pill bar with a tucked secondary capsule/chevron beneath.
+        enum Tuckbar {
+            private static func make(expanded: Bool) -> NSImage {
+                let size = CGSize(width: 18, height: 14)
+                let image = NSImage(size: size, flipped: false) { _ in
+                    NSColor.black.setFill()
+                    NSColor.black.setStroke()
+
+                    // Top primary menu bar capsule
+                    let topBar = NSBezierPath(roundedRect: CGRect(x: 1.5, y: 9.2, width: 15.0, height: 3.2), xRadius: 1.6, yRadius: 1.6)
+                    topBar.fill()
+
+                    if expanded {
+                        // Expanded secondary shelf outline with two inner dots
+                        let shelf = NSBezierPath(roundedRect: CGRect(x: 3.0, y: 1.6, width: 12.0, height: 5.4), xRadius: 2.2, yRadius: 2.2)
+                        shelf.lineWidth = 1.4
+                        shelf.stroke()
+                        NSBezierPath(ovalIn: CGRect(x: 5.8, y: 3.3, width: 2.0, height: 2.0)).fill()
+                        NSBezierPath(ovalIn: CGRect(x: 10.2, y: 3.3, width: 2.0, height: 2.0)).fill()
+                    } else {
+                        // Sleek downward tuck chevron + subtle drawer lip beneath the top bar
+                        let chev = NSBezierPath()
+                        chev.move(to: CGPoint(x: 5.5, y: 5.8))
+                        chev.line(to: CGPoint(x: 9.0, y: 2.5))
+                        chev.line(to: CGPoint(x: 12.5, y: 5.8))
+                        chev.lineWidth = 1.85
+                        chev.lineCapStyle = .round
+                        chev.lineJoinStyle = .round
+                        chev.stroke()
+                    }
+                    return true
+                }
+                image.isTemplate = true
+                return image
+            }
+
+            static let closed = make(expanded: false)
+            static let open = make(expanded: true)
+        }
+
         /// A namespace for static builtin chevron images.
         enum Chevron {
             /// Creates a chevron image with the given size and line width.

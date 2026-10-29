@@ -1,0 +1,46 @@
+import Foundation
+import CoreGraphics
+@main struct NativeLifecycleIdentityTests {
+    static func main() {
+        let lifecycle=NativeInteractionLifecycle()
+        let original=lifecycle.token()!
+        lifecycle.armPress(downTag:10,upTags:[20])
+        lifecycle.notePosted(tag:99,isDown:true,isUp:false)
+        precondition(!lifecycle.consumePendingPress(),"Unowned input must not be released")
+        lifecycle.armPress(downTag:10,upTags:[20]);lifecycle.notePosted(tag:10,isDown:true,isUp:false)
+        precondition(lifecycle.consumePendingPress(),"Our unfinished press needs release")
+        precondition(!lifecycle.consumePendingPress(),"A press must release at most once")
+        lifecycle.armPress(downTag:10,upTags:[20]);lifecycle.notePosted(tag:10,isDown:true,isUp:false)
+        lifecycle.notePosted(tag:20,isDown:false,isUp:true)
+        precondition(!lifecycle.consumePendingPress(),"Completed input needs no duplicate release")
+        lifecycle.armPress(downTag:10,upTags:[20]);lifecycle.notePosted(tag:10,isDown:true,isUp:false)
+        lifecycle.notePosted(tag:10,isDown:true,isUp:false,toOwner:true)
+        lifecycle.notePosted(tag:20,isDown:false,isUp:true)
+        let partialRelease=lifecycle.takeReleasePlan()
+        precondition(!partialRelease.session && partialRelease.owner,"An acknowledged session release must not hide a missing owner release")
+        let restore=lifecycle.beginTermination(budget:1)
+        precondition(!lifecycle.accepts(original),"Old event callbacks must stop after termination")
+        precondition(lifecycle.token()==nil,"New native actions must stop")
+        precondition(lifecycle.accepts(restore),"Bounded restoration is permitted")
+        lifecycle.finishTermination();precondition(!lifecycle.accepts(restore))
+        let expiry=NativeInteractionLifecycle();let expired=expiry.beginTermination(budget:0)
+        precondition(!expiry.accepts(expired),"Deadline must reject pending restoration callbacks")
+        precondition(MenuBarStableIdentity.acceptedIdentifier("_NS:9")==nil)
+        precondition(MenuBarStableIdentity.acceptedIdentifier("_AX:temporary")==nil)
+        precondition(MenuBarStableIdentity.title(rawTitle:"Item-0",identifier:nil,slot:0)=="Item-0|slot:0")
+        precondition(MenuBarStableIdentity.title(rawTitle:"Item-0",identifier:"_NS:9",slot:1)=="Item-0|slot:1")
+        precondition(MenuBarStableIdentity.title(rawTitle:"Item-0",identifier:"com.vendor.status/primary",slot:2)=="Item-0|ax:com.vendor.status%2Fprimary")
+        precondition(MenuBarStableIdentity.title(rawTitle:"Clock",identifier:"com.apple.clock",slot:4)=="Clock")
+        let aliases=MenuBarStableIdentity.legacyKeys(namespace:"com.vendor",rawTitle:"Item-0",identifier:nil,slot:0)
+        precondition(aliases==["com.vendor:Item-0"])
+        let map=MenuBarStableIdentity.migrationMap(entries:[("com.vendor:Item-0|slot:0",aliases)])
+        precondition(map["com.vendor:Item-0"]=="com.vendor:Item-0|slot:0")
+        let ambiguous=MenuBarStableIdentity.migrationMap(entries:[("one",["old"]),("two",["old"])])
+        precondition(ambiguous["old"]==nil)
+        let displays=[CGRect(x:0,y:0,width:1728,height:1117),CGRect(x:1728,y:0,width:1920,height:1080)]
+        precondition(NativeInteractionPolicy.displayIndex(frame:CGRect(x:1900,y:0,width:30,height:33),displays:displays)==1)
+        precondition(NativeInteractionPolicy.displayIndex(frame:CGRect(x:1600,y:0,width:30,height:33),displays:displays)==0)
+        precondition(NativeInteractionPolicy.displayIndex(frame:CGRect(x:-4000,y:0,width:30,height:33),displays:displays,preferredIndex:1)==1)
+        print("PASS: shutdown callback/owned-input lifecycle, generic stable identity and migration, side-by-side display selection")
+    }
+}

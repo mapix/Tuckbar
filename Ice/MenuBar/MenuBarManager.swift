@@ -134,19 +134,8 @@ final class MenuBarManager: ObservableObject {
             }
             .store(in: &c)
 
-        appState?.settingsWindow?.publisher(for: \.isVisible)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateAverageColorInfo()
-            }
-            .store(in: &c)
-
-        Timer.publish(every: 5, on: .main, in: .default)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.updateAverageColorInfo()
-            }
-            .store(in: &c)
+        // Average color sampling is disabled in the Dusk theme to avoid
+        // background ScreenCapture polling and the macOS screen capture indicator.
 
         // Hide application menus when a section is shown (if applicable).
         Publishers.MergeMany(sections.map { $0.controlItem.$state })

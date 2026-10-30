@@ -139,25 +139,23 @@ final class AppState: ObservableObject {
             Logger.appState.warning("No settings window!")
         }
 
-        Publishers.Merge(
-            navigationState.$isAppFrontmost,
-            navigationState.$isSettingsPresented
-        )
-        .debounce(for: 0.1, scheduler: DispatchQueue.main)
-        .sink { [weak self] shouldUpdate in
-            guard
-                let self,
-                shouldUpdate
-            else {
-                return
-            }
-            Task.detached {
-                if ScreenCapture.cachedCheckPermissions(reset: true) {
-                    await self.imageCache.updateCacheWithoutChecks(sections: MenuBarSection.Name.allCases)
+        navigationState.$isSettingsPresented
+            .removeDuplicates()
+            .debounce(for: 0.1, scheduler: DispatchQueue.main)
+            .sink { [weak self] isSettingsPresented in
+                guard
+                    let self,
+                    isSettingsPresented
+                else {
+                    return
+                }
+                Task.detached {
+                    if ScreenCapture.cachedCheckPermissions(reset: true) {
+                        await self.imageCache.updateCacheWithoutChecks(sections: MenuBarSection.Name.allCases)
+                    }
                 }
             }
-        }
-        .store(in: &c)
+            .store(in: &c)
 
         menuBarManager.objectWillChange
             .sink { [weak self] in

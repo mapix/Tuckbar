@@ -83,10 +83,7 @@ final class MenuBarItemImageCache: ObservableObject {
         var c = Set<AnyCancellable>()
 
         if let appState {
-            Publishers.Merge3(
-                // Update every 3 seconds at minimum.
-                Timer.publish(every: 3, on: .main, in: .default).autoconnect().mapToVoid(),
-
+            Publishers.Merge(
                 // Update when the active space or screen parameters change.
                 Publishers.Merge(
                     NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification),
@@ -94,15 +91,18 @@ final class MenuBarItemImageCache: ObservableObject {
                 )
                 .mapToVoid(),
 
-                // Update when the average menu bar color or cached items change.
-                Publishers.Merge(
-                    appState.menuBarManager.$averageColorInfo.removeDuplicates().mapToVoid(),
-                    appState.itemManager.$itemCache.removeDuplicates().mapToVoid()
-                )
+                // Update when the cached items change while a surface is visible.
+                appState.itemManager.$itemCache.removeDuplicates().mapToVoid()
             )
             .throttle(for: 0.5, scheduler: DispatchQueue.main, latest: false)
             .sink { [weak self] in
-                guard let self else {
+                guard
+                    let self,
+                    let appState = self.appState,
+                    appState.navigationState.isIceBarPresented ||
+                    appState.navigationState.isSearchPresented ||
+                    appState.navigationState.isSettingsPresented
+                else {
                     return
                 }
                 Task.detached {
@@ -291,15 +291,20 @@ final class MenuBarItemImageCache: ObservableObject {
             return
         }
 
-        let isIceBarPresented = appState.navigationState.isIceBarPresented
-        let isSearchPresented = appState.navigationState.isSearchPresented
+        let isIceBarPresented = await appState.navigationState.isIceBarPresented
+        let isSearchPresented = await appState.navigationState.isSearchPresented
+        let isSettingsPresented = await appState.navigationState.isSettingsPresented
 
-        guard !appState.itemManager.isMovingItem else {
+        guard isIceBarPresented || isSearchPresented || isSettingsPresented else {
+            return
+        }
+
+        guard await !appState.itemManager.isMovingItem else {
             logSkippingCache(reason: "an item is currently being moved")
             return
         }
 
-        guard !appState.itemManager.itemHasRecentlyMoved else {
+        guard await !appState.itemManager.itemHasRecentlyMoved else {
             logSkippingCache(reason: "an item was recently moved")
             return
         }
@@ -313,18 +318,15 @@ final class MenuBarItemImageCache: ObservableObject {
             return
         }
 
-        let isIceBarPresented = appState.navigationState.isIceBarPresented
-        let isSearchPresented = appState.navigationState.isSearchPresented
-        let isSettingsPresented = appState.navigationState.isSettingsPresented
+        let isIceBarPresented = await appState.navigationState.isIceBarPresented
+        let isSearchPresented = await appState.navigationState.isSearchPresented
+        let isSettingsPresented = await appState.navigationState.isSettingsPresented
 
-        var sectionsNeedingDisplay = [MenuBarSection.Name]()
-        if isSettingsPresented || isSearchPresented {
-            sectionsNeedingDisplay = MenuBarSection.Name.allCases
-        } else {
-            sectionsNeedingDisplay = MenuBarSection.Name.allCases
+        guard isIceBarPresented || isSearchPresented || isSettingsPresented else {
+            return
         }
 
-        await updateCache(sections: sectionsNeedingDisplay)
+        await updateCache(sections: MenuBarSection.Name.allCases)
     }
 }
 

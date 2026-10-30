@@ -22,12 +22,9 @@ import SwiftUI
 
     func performSetup() {
         guard let appState else { return }
-        Timer.publish(every: 3, on: .main, in: .common).autoconnect()
-            .sink { [weak self] _ in self?.update() }.store(in: &subscriptions)
         appState.navigationState.$isIceBarPresented.receive(on: DispatchQueue.main)
             .sink { [weak self] value in
                 if self?.shelfIsVisible != value { self?.shelfIsVisible = value }
-                if value { self?.update() }
             }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in self?.lastCaptureTime.removeAll(); self?.update() }.store(in: &subscriptions)
@@ -68,6 +65,11 @@ import SwiftUI
             backgroundDigests.removeValue(forKey: id); lastCaptureTime.removeValue(forKey: id)
             captureFailures.removeValue(forKey: id)
         }
+        for screen in screens {
+            darkBars[screen.displayID] = true
+        }
+        textColor = .white
+        guard ProcessInfo.processInfo.arguments.contains("--evidence-dir") else { return }
         let snapshot = WindowInfo.getOnScreenWindows()
         for screen in screens {
             let bounds = CGDisplayBounds(screen.displayID)
